@@ -12,14 +12,12 @@ from twisted.internet import defer
 from twisted.web.resource import Resource
 
 from synapse_room_code.constants import (
-    ACCESS_CODE_KNOCK_EVENT_CONTENT_KEY,
     DEFAULT_INVITE_POWER_LEVEL,
     DEFAULT_USERS_DEFAULT_POWER_LEVEL,
     EVENT_TYPE_M_ROOM_POWER_LEVELS,
     INVITE_POWER_LEVEL_KEY,
     MEMBERSHIP_CONTENT_KEY,
     MEMBERSHIP_INVITE,
-    MEMBERSHIP_KNOCK,
     USERS_DEFAULT_POWER_LEVEL_KEY,
     USERS_POWER_LEVEL_KEY,
 )
