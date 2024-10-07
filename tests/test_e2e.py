@@ -172,7 +172,6 @@ class TestE2E(aiounittest.AsyncTestCase):
             json=state_event_content,
             headers=headers,
         )
-        print(response.json())
         self.assertEqual(response.status_code, 200)
         event_id = response.json()["event_id"]
         self.assertIsInstance(event_id, str)
@@ -298,7 +297,7 @@ class TestE2E(aiounittest.AsyncTestCase):
             received_invitation = await self.wait_for_room_invitation(
                 room_id=room_id,
                 user_id=user_2_id,
-                access_token=user_2_access_token,
+                access_token=user_1_access_token,
             )
             if not received_invitation:
                 self.fail("User 2 was not invited to the room")
