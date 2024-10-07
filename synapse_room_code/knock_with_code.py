@@ -1,19 +1,27 @@
 import json
 import logging
-from typing import Any, List
+from typing import Any, List, Optional
 
 from synapse.http import server
 from synapse.http.server import respond_with_json
 from synapse.http.site import SynapseRequest
 from synapse.module_api import ModuleApi
 from synapse.storage.databases.main.room import RoomStore
+from synapse.types import UserID
 from twisted.internet import defer
 from twisted.web.resource import Resource
 
 from synapse_room_code.constants import (
     ACCESS_CODE_KNOCK_EVENT_CONTENT_KEY,
+    DEFAULT_INVITE_POWER_LEVEL,
+    DEFAULT_USERS_DEFAULT_POWER_LEVEL,
+    EVENT_TYPE_M_ROOM_POWER_LEVELS,
+    INVITE_POWER_LEVEL_KEY,
     MEMBERSHIP_CONTENT_KEY,
+    MEMBERSHIP_INVITE,
     MEMBERSHIP_KNOCK,
+    USERS_DEFAULT_POWER_LEVEL_KEY,
+    USERS_POWER_LEVEL_KEY,
 )
 
 logger = logging.getLogger("synapse.module.synapse_room_code.knock_with_code")
@@ -98,21 +106,17 @@ class KnockWithCode(Resource):
             # Send knock with access code to the rooms as requester
             requester = await self._auth.get_user_by_req(request)
             requester_id = requester.user.to_string()
-            sent_rooms: List[str] = []
+            invited_rooms: List[str] = []
             for room_id in room_ids:
                 try:
-                    await self.send_knock_with_code(
-                        room_id=room_id,
-                        user_id=requester_id,
-                        access_code=access_code,
-                    )
-                    sent_rooms.append(room_id)
+                    await self._invite_user_to_room(requester_id, room_id)
+                    invited_rooms.append(room_id)
                 except Exception as e:
                     logger.error(f"Error sending knock with code to {room_id}: {e}")
             respond_with_json(
                 request,
                 200,
-                {"message": f"Sent invites to {', '.join(sent_rooms)}"},
+                {"message": f"Sent invites to {', '.join(invited_rooms)}"},
                 send_cors=True,
             )
         except Exception as e:
@@ -197,21 +201,87 @@ class KnockWithCode(Resource):
                 room_ids.append(row[0])
         return room_ids
 
-    async def send_knock_with_code(self, room_id: str, user_id: str, access_code: str):
-        """
-        Send a knock event to a room with an access code.
-
-        :param room_id: The room ID to send the knock event to.
-        :param user_id: The user ID that is sending the knock event.
-        :param access_code: The access code to include in the knock event.
-        """
+    async def _invite_user_to_room(self, user_id: str, room_id: str) -> None:
+        # Get a user with permission to invite
+        inviter_user = await self._get_inviter_user(room_id)
+        if inviter_user is None:
+            return
+        content = {MEMBERSHIP_CONTENT_KEY: MEMBERSHIP_INVITE}
         await self._api.update_room_membership(
-            room_id=room_id,
-            sender=user_id,
+            sender=inviter_user.to_string(),
             target=user_id,
-            new_membership=MEMBERSHIP_KNOCK,
-            content={
-                MEMBERSHIP_CONTENT_KEY: MEMBERSHIP_KNOCK,
-                ACCESS_CODE_KNOCK_EVENT_CONTENT_KEY: access_code,
-            },
+            room_id=room_id,
+            new_membership=MEMBERSHIP_INVITE,
+            content=content,
         )
+
+    async def _get_inviter_user(self, room_id: str) -> Optional[UserID]:
+        # inviter must be local and have sufficient power to invite
+
+        # extract room power levels
+        power_levels_state_events = await self._api.get_room_state(
+            room_id=room_id,
+            event_filter=[(EVENT_TYPE_M_ROOM_POWER_LEVELS, None)],
+        )
+        power_levels = None
+        for state_event in power_levels_state_events.values():
+            if state_event.type != EVENT_TYPE_M_ROOM_POWER_LEVELS:
+                continue
+            power_levels = state_event.content
+            break
+        if not power_levels:
+            return None
+
+        # extract power required to invite
+        try:
+            invite_power = int(
+                power_levels.get(
+                    INVITE_POWER_LEVEL_KEY,
+                    DEFAULT_INVITE_POWER_LEVEL,
+                )
+            )
+        except ValueError:
+            invite_power = DEFAULT_INVITE_POWER_LEVEL
+
+        # extract default power level
+        try:
+            users_default = int(
+                power_levels.get(
+                    USERS_DEFAULT_POWER_LEVEL_KEY,
+                    DEFAULT_USERS_DEFAULT_POWER_LEVEL,
+                )
+            )
+        except ValueError:
+            users_default = DEFAULT_USERS_DEFAULT_POWER_LEVEL
+
+        # extract users power levels
+        users_power_level = power_levels.get(USERS_POWER_LEVEL_KEY, None)
+        if not isinstance(users_power_level, dict):
+            users_power_level = {}
+
+        # Find the user with the highest power level
+        local_user_id_with_highest_power = None
+        highest_local_power = users_default
+        for user_id, power_level in users_power_level.items():
+            # ensure power level is an integer
+            try:
+                power_level = int(power_level)
+            except ValueError:
+                continue
+
+            # ensure user_id is a string
+            if not isinstance(user_id, str):
+                continue
+
+            if power_level > highest_local_power and self._api.is_mine(user_id):
+                highest_local_power = power_level
+                local_user_id_with_highest_power = user_id
+
+        # Check if the user with the highest power level can invite
+        if local_user_id_with_highest_power is None:
+            return None
+
+        if highest_local_power < invite_power:
+            return None
+
+        return UserID.from_string(local_user_id_with_highest_power)
