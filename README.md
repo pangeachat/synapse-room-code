@@ -7,7 +7,7 @@ Extends room to optionally have a secret code. Upon knocking with a valid code, 
 
 From the virtual environment that you use for Synapse, install this module with:
 ```shell
-pip install path/to/synapse-room-code
+pip install synapse-room-code
 ```
 (If you run into issues, you may need to upgrade `pip` first, e.g. by running
 `pip install --upgrade pip`)
@@ -16,8 +16,7 @@ Then alter your homeserver configuration, adding to your `modules` configuration
 ```yaml
 modules:
   - module: synapse_room_code.SynapseRoomCode
-    config:
-      # TODO: Complete this section with an example for your module
+    config: {}
 ```
 
 
