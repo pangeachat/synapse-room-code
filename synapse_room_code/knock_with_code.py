@@ -114,7 +114,7 @@ class KnockWithCode(Resource):
             respond_with_json(
                 request,
                 200,
-                {"message": f"Sent invites to {', '.join(invited_rooms)}"},
+                {"message": f"Invited {requester_id} to {', '.join(invited_rooms)}"},
                 send_cors=True,
             )
         except Exception as e:
@@ -204,13 +204,17 @@ class KnockWithCode(Resource):
         inviter_user = await self._get_inviter_user(room_id)
         if inviter_user is None:
             return
+        inviter_user_id = inviter_user.to_string()
         content = {MEMBERSHIP_CONTENT_KEY: MEMBERSHIP_INVITE}
-        await self._api.update_room_membership(
-            sender=inviter_user.to_string(),
+        event = await self._api.update_room_membership(
+            sender=inviter_user_id,
             target=user_id,
             room_id=room_id,
             new_membership=MEMBERSHIP_INVITE,
             content=content,
+        )
+        logger.debug(
+            f"{inviter_user_id} invited {user_id} to {room_id}: {event.get_dict()}"
         )
 
     async def _get_inviter_user(self, room_id: str) -> Optional[UserID]:

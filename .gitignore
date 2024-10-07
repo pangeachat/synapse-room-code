@@ -8,3 +8,4 @@ __pycache__
 /dist
 .vscode
 *.log*
+_trial_temp.lock
