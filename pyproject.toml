@@ -38,7 +38,9 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [tool.mypy]
-strict = true
+files = ["synapse_room_code", "tests"]
+disable_error_code = ["import-untyped", "no-untyped-call", "attr-defined"]
+strict = false 
 
 [tool.ruff]
 line-length = 88

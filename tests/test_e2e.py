@@ -15,12 +15,17 @@ from synapse_room_code.constants import (
     ACCESS_CODE_JOIN_RULE_CONTENT_KEY,
     JOIN_RULE_CONTENT_KEY,
     KNOCK_JOIN_RULE_VALUE,
-    ACCESS_CODE_KNOCK_EVENT_CONTENT_KEY,
     MEMBERSHIP_CONTENT_KEY,
-    MEMBERSHIP_KNOCK,
+    MEMBERSHIP_INVITE,
 )
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.DEBUG,  # Set the logging level
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",  # Log format
+    filename="synapse.log",  # File to log to
+    filemode="w",  # Append mode (use 'w' to overwrite each time)
+)
 
 
 class TestE2E(aiounittest.AsyncTestCase):
@@ -28,6 +33,7 @@ class TestE2E(aiounittest.AsyncTestCase):
         # Create a temporary directory for the Synapse server
         temp_dir = tempfile.mkdtemp()
         server_process = None
+        access_code = "123123a"
 
         try:
             # Generate Synapse config with server name 'my.domain.name'
@@ -84,7 +90,7 @@ class TestE2E(aiounittest.AsyncTestCase):
             # Start threads to read stdout and stderr concurrently
             def read_output(pipe):
                 for line in iter(pipe.readline, ""):
-                    logger.debug(line, end="")
+                    logger.debug(line)
                 pipe.close()
 
             stdout_thread = threading.Thread(
@@ -174,65 +180,10 @@ class TestE2E(aiounittest.AsyncTestCase):
 
             # Set join rules to knock and without assigning an access code
             set_join_rules_url = f"http://localhost:8008/_matrix/client/v3/rooms/{room_id}/state/m.room.join_rules"
-            set_join_rules_data_without_access_code = {
-                JOIN_RULE_CONTENT_KEY: KNOCK_JOIN_RULE_VALUE,
-            }
-            response = requests.put(
-                set_join_rules_url,
-                json=set_join_rules_data_without_access_code,
-                headers=user_1_headers,
-            )
-            self.assertEqual(response.status_code, 200)
-
-            # Attempt to knock on the room with user 2. This is a premature knock since the room join rule does not have an access code yet
-
-            # A knock is a room event with type m.room.member and membership to "knock"
-            knock_url = f"http://localhost:8008/_matrix/client/v3/rooms/{room_id}/state/m.room.member/@test2:my.domain.name"
-            knock_data = {
-                MEMBERSHIP_CONTENT_KEY: MEMBERSHIP_KNOCK,
-                ACCESS_CODE_KNOCK_EVENT_CONTENT_KEY: "my_access_code",
-            }
-            response = requests.put(
-                knock_url,
-                json=knock_data,
-                headers=user_2_headers,
-            )
-            knock_event_id = response.json().get("event_id")
-            if not isinstance(knock_event_id, str):
-                self.fail("User 2 was not able to knock on the room")
-            self.assertEqual(response.status_code, 200)
-
-            # Wait for the invite, it should not arrive ever
-            room_state_url = f"http://localhost:8008/_matrix/client/v3/rooms/{room_id}/state/m.room.member/@test2:my.domain.name"
-            total_wait_time = 0
-            max_wait_time = 10  # Maximum wait time in seconds
-            wait_interval = 1  # Interval between checks in seconds
-            user_invited = False
-            while total_wait_time < max_wait_time and not user_invited:
-                # Get the room state as user 1
-                response = requests.get(room_state_url, headers=user_1_headers)
-                if (
-                    response.status_code == 200
-                    and response.json().get("membership") == "invite"
-                ):
-                    user_invited = True
-                    break
-
-                print(
-                    f"User 2 has not been invited to the room yet, retrying {total_wait_time}/{max_wait_time}..."
-                )
-                await asyncio.sleep(wait_interval)
-                total_wait_time += wait_interval
-
-            if user_invited:
-                self.fail("User 2 was invited to the room prematurely")
-            else:
-                print("User 2 was not invited to the room prematurely")
-
             # Set join rules to knock and assign an access code
             set_join_rules_data_with_access_code = {
                 JOIN_RULE_CONTENT_KEY: KNOCK_JOIN_RULE_VALUE,
-                ACCESS_CODE_JOIN_RULE_CONTENT_KEY: "my_access_code",
+                ACCESS_CODE_JOIN_RULE_CONTENT_KEY: access_code,
             }
             response = requests.put(
                 set_join_rules_url,
@@ -241,25 +192,25 @@ class TestE2E(aiounittest.AsyncTestCase):
             )
             self.assertEqual(response.status_code, 200)
 
-            # Retract the knock event by sending another membership event with membership "leave"
-            knock_data["membership"] = "leave"
-            response = requests.put(
-                knock_url,
-                json=knock_data,
+            # Invoke knock with code endpoint
+            knock_with_code_url = (
+                "http://localhost:8008/_synapse/client/knock_with_code"
+            )
+            invalid_response = requests.post(
+                knock_with_code_url,
+                json={"access_code": "invalid"},
                 headers=user_2_headers,
             )
-            self.assertEqual(response.status_code, 200)
-
-            # Knock on the room with user 2 again
-            knock_data["membership"] = MEMBERSHIP_KNOCK
-            response = requests.put(
-                knock_url,
-                json=knock_data,
+            self.assertEqual(invalid_response.status_code, 400)
+            valid_response = requests.post(
+                knock_with_code_url,
+                json={"access_code": access_code},
                 headers=user_2_headers,
             )
-            self.assertEqual(response.status_code, 200)
+            self.assertEqual(valid_response.status_code, 200)
 
             # Wait for the invite
+            room_state_url = f"http://localhost:8008/_matrix/client/v3/rooms/{room_id}/state/m.room.member/@test2:my.domain.name"
             total_wait_time = 0
             max_wait_time = 10  # Maximum wait time in seconds
             wait_interval = 1  # Interval between checks in seconds
@@ -269,7 +220,7 @@ class TestE2E(aiounittest.AsyncTestCase):
                 response = requests.get(room_state_url, headers=user_1_headers)
                 if (
                     response.status_code == 200
-                    and response.json().get("membership") == "invite"
+                    and response.json().get(MEMBERSHIP_CONTENT_KEY) == MEMBERSHIP_INVITE
                 ):
                     received_invitation = True
                     break

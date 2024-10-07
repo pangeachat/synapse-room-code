@@ -4,8 +4,9 @@ from typing import Any, Dict, Literal, Optional, Union
 import attr
 from synapse.events import EventBase
 from synapse.module_api import ModuleApi
-from synapse.types import StateMap, UserID
 from synapse.module_api.errors import Codes
+from synapse.types import StateMap, UserID
+
 from synapse_room_code.constants import (
     ACCESS_CODE_JOIN_RULE_CONTENT_KEY,
     ACCESS_CODE_KNOCK_EVENT_CONTENT_KEY,
@@ -23,6 +24,7 @@ from synapse_room_code.constants import (
     USERS_DEFAULT_POWER_LEVEL_KEY,
     USERS_POWER_LEVEL_KEY,
 )
+from synapse_room_code.knock_with_code import KnockWithCode as KnockWithCodeResource
 
 logger = logging.getLogger(f"synapse.module.{__name__}")
 
@@ -46,6 +48,15 @@ class SynapseRoomCode:
         # Register the method to check for spam
         self._api.register_spam_checker_callbacks(
             check_event_for_spam=self.check_event_for_spam,
+        )
+
+        # Initiate resources
+        self.resource = KnockWithCodeResource(api)
+
+        # Register the HTTP endpoint
+        api.register_web_resource(
+            path="/_synapse/client/knock_with_code",
+            resource=self.resource,
         )
 
     @staticmethod
@@ -120,7 +131,7 @@ class SynapseRoomCode:
         if inviter_user is None:
             return
         content = {MEMBERSHIP_CONTENT_KEY: MEMBERSHIP_INVITE}
-        event = await self._api.update_room_membership(
+        await self._api.update_room_membership(
             sender=inviter_user.to_string(),
             target=user_id,
             room_id=room_id,
