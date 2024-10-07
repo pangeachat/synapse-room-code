@@ -24,7 +24,9 @@ from synapse_room_code.constants import (
     USERS_DEFAULT_POWER_LEVEL_KEY,
     USERS_POWER_LEVEL_KEY,
 )
-from synapse_room_code.knock_with_code import KnockWithCode as KnockWithCodeResource
+from synapse_room_code.knock_with_code import (
+    KnockWithCode as KnockWithCodeResource,
+)
 
 logger = logging.getLogger(f"synapse.module.{__name__}")
 

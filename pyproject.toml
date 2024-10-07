@@ -43,7 +43,7 @@ disable_error_code = ["import-untyped", "no-untyped-call", "attr-defined"]
 strict = false 
 
 [tool.ruff]
-line-length = 88
+line-length = 80
 
 # See https://docs.astral.sh/ruff/rules/#error-e
 # for error codes. The ones we ignore are:
