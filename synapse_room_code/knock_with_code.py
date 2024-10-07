@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any
+from typing import Any, List
 
 from synapse.http import server
 from synapse.http.server import respond_with_json
@@ -98,7 +98,7 @@ class KnockWithCode(Resource):
             # Send knock with access code to the rooms as requester
             requester = await self._auth.get_user_by_req(request)
             requester_id = requester.user.to_string()
-            sent_rooms: list[str] = []
+            sent_rooms: List[str] = []
             for room_id in room_ids:
                 try:
                     await self.send_knock_with_code(
@@ -136,13 +136,13 @@ class KnockWithCode(Resource):
         except Exception:
             return None
 
-    async def _get_rooms_with_access_code(self, access_code: str) -> list[str]:
+    async def _get_rooms_with_access_code(self, access_code: str) -> List[str]:
         """
         Query the Synapse database for rooms that have a state event `m.room.join_rules`
         with content that includes the provided access code.
 
         :param access_code: The access code to search for.
-        :return: A list of room IDs where the `access_code` matches. None if there was an error
+        :return: A List of room IDs where the `access_code` matches. None if there was an error
         """
         # Access the database connection
         store: RoomStore = self._datastores.main
@@ -165,7 +165,7 @@ class KnockWithCode(Resource):
             GROUP BY se.room_id
             HAVING MAX(e.origin_server_ts)
             """
-            params = [access_code]  # Use a list with placeholders
+            params = (access_code,)  # Use a List with placeholders
 
         else:
             # PostgreSQL: use jsonb_extract_path_text
@@ -189,7 +189,7 @@ class KnockWithCode(Resource):
             query,
             *params,
         )
-        room_ids: list[str] = []
+        room_ids: List[str] = []
         for row in rows:
             if isinstance(row, str):
                 room_ids.append(row)
