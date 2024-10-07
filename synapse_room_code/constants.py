@@ -1,6 +1,7 @@
 # https://spec.matrix.org/v1.11/client-server-api/#mroomjoin_rules
 EVENT_TYPE_M_ROOM_JOIN_RULES = "m.room.join_rules"
-KNOCK_JOIN_RULE_VALUE = "knock"  # New join rule value
+JOIN_RULE_CONTENT_KEY = "join_rule"
+KNOCK_JOIN_RULE_VALUE = "knock"  # Existing join rule value
 ACCESS_CODE_JOIN_RULE_CONTENT_KEY = "access_code"  # New join rule content key
 
 # https://spec.matrix.org/v1.11/client-server-api/#mroommember

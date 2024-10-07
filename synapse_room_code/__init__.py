@@ -1,10 +1,9 @@
 import logging
-from typing import Any, Dict, Literal, Optional, Tuple, Union
+from typing import Any, Dict, Literal, Optional, Union
 
 import attr
 from synapse.events import EventBase
 from synapse.module_api import ModuleApi
-from synapse.module_api.callbacks import SpamCheckerModuleApiCallbacks
 from synapse.types import StateMap, UserID
 from synapse.module_api.errors import Codes
 from synapse_room_code.constants import (
@@ -16,6 +15,8 @@ from synapse_room_code.constants import (
     EVENT_TYPE_M_ROOM_MEMBER,
     EVENT_TYPE_M_ROOM_POWER_LEVELS,
     INVITE_POWER_LEVEL_KEY,
+    JOIN_RULE_CONTENT_KEY,
+    KNOCK_JOIN_RULE_VALUE,
     MEMBERSHIP_CONTENT_KEY,
     MEMBERSHIP_INVITE,
     MEMBERSHIP_KNOCK,
@@ -201,4 +202,40 @@ class SynapseRoomCode:
     async def check_event_for_spam(
         self, event: EventBase
     ) -> Union[Literal["NOT_SPAM"], Codes, str, bool]:
+        if (
+            event.type != EVENT_TYPE_M_ROOM_MEMBER
+            or event.content.get(MEMBERSHIP_CONTENT_KEY) != MEMBERSHIP_KNOCK
+        ):
+            return "NOT_SPAM"
+
+        # extract room join rules
+        join_rules_state_events = await self._api.get_room_state(
+            room_id=event.room_id,
+            event_filter=[(EVENT_TYPE_M_ROOM_JOIN_RULES, None)],
+        )
+        join_rules_state_event = None
+        for state_event in join_rules_state_events.values():
+            if state_event.type != EVENT_TYPE_M_ROOM_JOIN_RULES:
+                continue
+            join_rules_state_event = state_event.content
+            break
+        if join_rules_state_event is None:
+            return Codes.FORBIDDEN
+
+        join_rule = join_rules_state_event.get(JOIN_RULE_CONTENT_KEY)
+        if join_rule != KNOCK_JOIN_RULE_VALUE:
+            return "NOT_SPAM"
+
+        incoming_event_knock_code = event.content.get(
+            ACCESS_CODE_KNOCK_EVENT_CONTENT_KEY
+        )
+        join_rule_access_code = join_rules_state_event.get(
+            ACCESS_CODE_JOIN_RULE_CONTENT_KEY
+        )
+        if not isinstance(join_rule_access_code, str):
+            return "NOT_SPAM"
+        if not isinstance(incoming_event_knock_code, str):
+            return Codes.FORBIDDEN
+        if incoming_event_knock_code != join_rule_access_code:
+            return Codes.FORBIDDEN
         return "NOT_SPAM"

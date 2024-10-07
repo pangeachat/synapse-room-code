@@ -13,6 +13,7 @@ import yaml
 
 from synapse_room_code.constants import (
     ACCESS_CODE_JOIN_RULE_CONTENT_KEY,
+    JOIN_RULE_CONTENT_KEY,
     KNOCK_JOIN_RULE_VALUE,
     ACCESS_CODE_KNOCK_EVENT_CONTENT_KEY,
     MEMBERSHIP_CONTENT_KEY,
@@ -174,7 +175,7 @@ class TestE2E(aiounittest.AsyncTestCase):
             # Set join rules to knock and without assigning an access code
             set_join_rules_url = f"http://localhost:8008/_matrix/client/v3/rooms/{room_id}/state/m.room.join_rules"
             set_join_rules_data_without_access_code = {
-                "join_rule": KNOCK_JOIN_RULE_VALUE,
+                JOIN_RULE_CONTENT_KEY: KNOCK_JOIN_RULE_VALUE,
             }
             response = requests.put(
                 set_join_rules_url,
@@ -230,7 +231,7 @@ class TestE2E(aiounittest.AsyncTestCase):
 
             # Set join rules to knock and assign an access code
             set_join_rules_data_with_access_code = {
-                "join_rule": KNOCK_JOIN_RULE_VALUE,
+                JOIN_RULE_CONTENT_KEY: KNOCK_JOIN_RULE_VALUE,
                 ACCESS_CODE_JOIN_RULE_CONTENT_KEY: "my_access_code",
             }
             response = requests.put(
