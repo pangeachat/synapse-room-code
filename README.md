@@ -27,7 +27,9 @@ In a virtual environment with pip ≥ 21.1, run
 pip install -e .[dev]
 ```
 
-To run the unit tests, you can either use:
+To run the unit tests, ensure you have `postgres` installed in your system. You can check this by running `which postgres` - if it shows a path to your `postgres` executable then it is ready. 
+
+To actually run the unit test, you can either use:
 ```shell
 tox -e py
 ```

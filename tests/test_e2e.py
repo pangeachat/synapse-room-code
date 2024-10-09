@@ -6,9 +6,12 @@ import subprocess
 import sys
 import tempfile
 import threading
-from typing import IO
-
+from typing import IO, Literal
+from urllib.parse import urlparse
+import testing.postgresql
+from psycopg2.extensions import parse_dsn
 import aiounittest
+import psycopg2
 import requests
 import yaml
 
@@ -32,6 +35,8 @@ logging.basicConfig(
 class TestE2E(aiounittest.AsyncTestCase):
     async def start_test_synapse(
         self,
+        db: Literal["sqlite", "postgresql"] = "sqlite",
+        postgresql_url: str | None = None,
     ) -> tuple[str, str, subprocess.Popen[str], threading.Thread, threading.Thread]:
         try:
             synapse_dir = tempfile.mkdtemp()
@@ -56,6 +61,24 @@ class TestE2E(aiounittest.AsyncTestCase):
             config["modules"] = [
                 {"module": "synapse_room_code.SynapseRoomCode", "config": {}}
             ]
+            if db == "sqlite":
+                if postgresql_url is not None:
+                    self.fail(
+                        "PostgreSQL URL must not be defined when using SQLite database"
+                    )
+                config["database"] = {
+                    "name": "sqlite3",
+                    "args": {"database": "homeserver.db"},
+                }
+            elif db == "postgresql":
+                if postgresql_url is None:
+                    self.fail("PostgreSQL URL is required for PostgreSQL database")
+                dsn_params = parse_dsn(postgresql_url)
+                config["database"] = {
+                    "name": "psycopg2",
+                    "args": dsn_params,
+                }
+
             with open(config_path, "w") as f:
                 yaml.dump(config, f)
 
@@ -250,13 +273,184 @@ class TestE2E(aiounittest.AsyncTestCase):
             total_wait_time += wait_interval
         return received_invitation
 
+    async def start_test_postgres(self):
+        postgresql = None
+        try:
+            # Start a temporary PostgreSQL instance
+            postgresql = testing.postgresql.Postgresql()
+            postgres_url = postgresql.url()
+
+            # Wait until the instance is ready to accept connections
+            max_waiting_time = 10  # in seconds
+            wait_interval = 1  # in seconds
+            total_wait_time = 0
+            postgres_is_up = False
+
+            while total_wait_time < max_waiting_time and not postgres_is_up:
+                try:
+                    conn = psycopg2.connect(postgres_url)
+                    conn.close()
+                    postgres_is_up = True
+                    print("Postgres started successfully")
+                    break
+                except psycopg2.OperationalError:
+                    print(
+                        f"Postgres is not yet up, retrying {total_wait_time}/{max_waiting_time}..."
+                    )
+                    await asyncio.sleep(wait_interval)
+                    total_wait_time += wait_interval
+
+            if not postgres_is_up:
+                postgresql.stop()
+                self.fail("Postgres did not start successfully")
+
+            # Create a new database with LC_COLLATE and LC_CTYPE set to 'C'
+            conn = psycopg2.connect(postgres_url)
+            conn.autocommit = True
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                CREATE DATABASE testdb
+                WITH TEMPLATE template0
+                LC_COLLATE 'C'
+                LC_CTYPE 'C';
+            """
+            )
+            cursor.close()
+            conn.close()
+
+            # Update the connection parameters to connect to 'testdb'
+            dsn_params = parse_dsn(postgres_url)
+            dsn_params["dbname"] = "testdb"
+            postgres_url_testdb = psycopg2.extensions.make_dsn(**dsn_params)
+
+            # Confirm the collation
+            conn = psycopg2.connect(postgres_url_testdb)
+            cursor = conn.cursor()
+            cursor.execute("SHOW LC_COLLATE;")
+            collation = cursor.fetchone()[0]
+            print(f"Current collation: {collation}")
+            assert collation == "C", f"Expected collation 'C', got '{collation}'"
+
+            cursor.execute("SHOW LC_CTYPE;")
+            ctype = cursor.fetchone()[0]
+            print(f"Current character classification: {ctype}")
+            assert ctype == "C", f"Expected LC_CTYPE 'C', got '{ctype}'"
+
+            cursor.close()
+            conn.close()
+
+            # Return both the process and the connection parameters
+            return postgresql, postgres_url_testdb
+
+        except Exception as e:
+            # Ensure the instance is stopped if an exception occurs
+            if postgresql is not None:
+                postgresql.stop()
+            raise e
+
     async def test_e2e_sqlite(self) -> None:
+        synapse_dir = None
+        server_process = None
+        stdout_thread = None
+        stderr_thread = None
         try:
             # Create a temporary directory for the Synapse server
             access_code = "vldcde1"
+            (
+                synapse_dir,
+                config_path,
+                server_process,
+                stdout_thread,
+                stderr_thread,
+            ) = await self.start_test_synapse()
+            await self.register_user(
+                config_path=config_path,
+                dir=synapse_dir,
+                user="test1",
+                password="123123123",
+                admin=True,
+            )
+            await self.register_user(
+                config_path=config_path,
+                dir=synapse_dir,
+                user="test2",
+                password="123123123",
+                admin=True,
+            )
 
-            (synapse_dir, config_path, server_process, stdout_thread, stderr_thread) = (
-                await self.start_test_synapse()
+            # Login to obtain access token of both users
+            user_1_id, user_1_access_token = await self.login_user(
+                user="test1", password="123123123"
+            )
+            user_2_id, user_2_access_token = await self.login_user(
+                user="test2", password="123123123"
+            )
+
+            room_id = await self.create_private_room(user_1_access_token)
+
+            await self.set_room_knockable_with_code(
+                room_id=room_id,
+                access_token=user_1_access_token,
+                access_code=access_code,
+            )
+
+            # Invoke knock with code endpoint
+            await self.knock_with_invalid_code(user_2_access_token)
+            await self.knock_with_code(access_code, user_2_access_token)
+
+            # Wait for the invite
+            received_invitation = await self.wait_for_room_invitation(
+                room_id=room_id,
+                user_id=user_2_id,
+                access_token=user_1_access_token,
+            )
+            if not received_invitation:
+                self.fail("User 2 was not invited to the room")
+            else:
+                print("User 2 was invited to the room")
+            # Clean up
+            if server_process is not None:
+                server_process.terminate()
+                server_process.wait()
+            if stdout_thread is not None:
+                stdout_thread.join()
+            if stderr_thread is not None:
+                stderr_thread.join()
+            if synapse_dir is not None:
+                shutil.rmtree(synapse_dir)
+        except Exception as e:
+            if server_process is not None:
+                server_process.terminate()
+                server_process.wait()
+            if stdout_thread is not None:
+                stdout_thread.join()
+            if stderr_thread is not None:
+                stderr_thread.join()
+            if synapse_dir is not None:
+                shutil.rmtree(synapse_dir)
+            raise e
+
+    async def test_e2e_postgresql(self) -> None:
+        postgres = None
+        server_process = None
+        server_process = None
+        stdout_thread = None
+        stderr_thread = None
+        synapse_dir = None
+        try:
+            # Create a temporary directory for the Synapse server
+            access_code = "vldcde1"
+            postgres, postgres_url = await self.start_test_postgres()
+            print(postgres_url)
+            (
+                synapse_dir,
+                config_path,
+                server_process,
+                stdout_thread,
+                stderr_thread,
+            ) = await self.start_test_synapse(
+                db="postgresql", postgresql_url=postgres_url
             )
             await self.register_user(
                 config_path=config_path,
@@ -303,15 +497,29 @@ class TestE2E(aiounittest.AsyncTestCase):
                 self.fail("User 2 was not invited to the room")
             else:
                 print("User 2 was invited to the room")
-        except Exception as e:
-            self.fail(e)
-        finally:
-            # Clean up
-            server_process.terminate()
-            server_process.wait()
-            stdout_thread.join()
-            stderr_thread.join()
-            shutil.rmtree(synapse_dir)
 
-    async def test_e2e_postgresql(self) -> None:
-        pass
+            # Clean up
+            if postgres is not None:
+                postgres.stop()
+            if server_process is not None:
+                server_process.terminate()
+                server_process.wait()
+            if stdout_thread is not None:
+                stdout_thread.join()
+            if stderr_thread is not None:
+                stderr_thread.join()
+            if synapse_dir is not None:
+                shutil.rmtree(synapse_dir)
+        except Exception as e:
+            if postgres is not None:
+                postgres.stop()
+            if server_process is not None:
+                server_process.terminate()
+                server_process.wait()
+            if stdout_thread is not None:
+                stdout_thread.join()
+            if stderr_thread is not None:
+                stderr_thread.join()
+            if synapse_dir is not None:
+                shutil.rmtree(synapse_dir)
+            raise e
