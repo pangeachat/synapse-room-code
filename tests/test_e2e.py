@@ -6,7 +6,7 @@ import subprocess
 import sys
 import tempfile
 import threading
-from typing import IO, Literal
+from typing import IO, Literal, Union
 
 import aiounittest
 import psycopg2
@@ -36,7 +36,7 @@ class TestE2E(aiounittest.AsyncTestCase):
     async def start_test_synapse(
         self,
         db: Literal["sqlite", "postgresql"] = "sqlite",
-        postgresql_url: str | None = None,
+        postgresql_url: Union[str, None] = None,
     ) -> tuple[str, str, subprocess.Popen[str], threading.Thread, threading.Thread]:
         try:
             synapse_dir = tempfile.mkdtemp()
@@ -109,7 +109,7 @@ class TestE2E(aiounittest.AsyncTestCase):
             )
 
             # Start threads to read stdout and stderr concurrently
-            def read_output(pipe: IO[str] | None):
+            def read_output(pipe: Union[IO[str], None]):
                 if pipe is None:
                     return
                 for line in iter(pipe.readline, ""):
@@ -184,7 +184,7 @@ class TestE2E(aiounittest.AsyncTestCase):
         self,
         room_id: str,
         access_token: str,
-        access_code: str | None = None,
+        access_code: Union[str, None] = None,
     ):
         headers = {"Authorization": f"Bearer {access_token}"}
         set_join_rules_url = f"http://localhost:8008/_matrix/client/v3/rooms/{room_id}/state/m.room.join_rules"
