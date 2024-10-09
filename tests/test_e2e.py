@@ -6,7 +6,7 @@ import subprocess
 import sys
 import tempfile
 import threading
-from typing import IO, Literal, Union
+from typing import IO, Literal, Tuple, Union
 
 import aiounittest
 import psycopg2
@@ -37,7 +37,7 @@ class TestE2E(aiounittest.AsyncTestCase):
         self,
         db: Literal["sqlite", "postgresql"] = "sqlite",
         postgresql_url: Union[str, None] = None,
-    ) -> tuple[str, str, subprocess.Popen[str], threading.Thread, threading.Thread]:
+    ) -> Tuple[str, str, subprocess.Popen[str], threading.Thread, threading.Thread]:
         try:
             synapse_dir = tempfile.mkdtemp()
 
@@ -215,7 +215,7 @@ class TestE2E(aiounittest.AsyncTestCase):
             register_user_cmd.append("--admin")
         subprocess.check_call(register_user_cmd, cwd=dir)
 
-    async def login_user(self, user: str, password: str) -> tuple[str, str]:
+    async def login_user(self, user: str, password: str) -> Tuple[str, str]:
         login_url = "http://localhost:8008/_matrix/client/v3/login"
         login_data = {
             "type": "m.login.password",
