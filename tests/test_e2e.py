@@ -37,7 +37,7 @@ class TestE2E(aiounittest.AsyncTestCase):
         self,
         db: Literal["sqlite", "postgresql"] = "sqlite",
         postgresql_url: Union[str, None] = None,
-    ) -> Tuple[str, str, subprocess.Popen[str], threading.Thread, threading.Thread]:
+    ) -> Tuple[str, str, subprocess.Popen, threading.Thread, threading.Thread]:
         try:
             synapse_dir = tempfile.mkdtemp()
 
