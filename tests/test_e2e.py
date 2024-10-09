@@ -7,13 +7,13 @@ import sys
 import tempfile
 import threading
 from typing import IO, Literal
-from urllib.parse import urlparse
-import testing.postgresql
-from psycopg2.extensions import parse_dsn
+
 import aiounittest
 import psycopg2
 import requests
+import testing.postgresql
 import yaml
+from psycopg2.extensions import parse_dsn
 
 from synapse_room_code.constants import (
     ACCESS_CODE_JOIN_RULE_CONTENT_KEY,
@@ -110,6 +110,8 @@ class TestE2E(aiounittest.AsyncTestCase):
 
             # Start threads to read stdout and stderr concurrently
             def read_output(pipe: IO[str] | None):
+                if pipe is None:
+                    return
                 for line in iter(pipe.readline, ""):
                     logger.debug(line)
                 pipe.close()
