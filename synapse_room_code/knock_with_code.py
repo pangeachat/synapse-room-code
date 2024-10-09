@@ -114,7 +114,7 @@ class KnockWithCode(Resource):
             respond_with_json(
                 request,
                 200,
-                {"message": f"Sent invites to {', '.join(invited_rooms)}"},
+                {"message": f"Invited {requester_id} to {', '.join(invited_rooms)}"},
                 send_cors=True,
             )
         except Exception as e:
@@ -172,17 +172,15 @@ class KnockWithCode(Resource):
         else:
             # PostgreSQL: use jsonb_extract_path_text
             query = """
-            SELECT e.room_id
+            SELECT DISTINCT ON (e.room_id) e.room_id, e.event_id
             FROM events e
-                JOIN state_events se ON e.event_id = se.event_id
-                JOIN event_json ej ON e.event_id = ej.event_id
+            JOIN state_events se ON e.event_id = se.event_id
+            JOIN event_json ej ON e.event_id = ej.event_id
             WHERE
                 e.type = 'm.room.join_rules'
-                AND se.room_id = e.room_id
                 AND se.type = 'm.room.join_rules'
-                AND ej.json->'content'->>'access_code' = %s
-            GROUP BY se.room_id
-            HAVING MAX(e.origin_server_ts)
+                AND (ej.json::jsonb)->'content'->>'access_code' = %s
+            ORDER BY e.room_id, e.origin_server_ts DESC;
             """
             params = (access_code,)  # Use a tuple with placeholders
 
@@ -204,13 +202,17 @@ class KnockWithCode(Resource):
         inviter_user = await self._get_inviter_user(room_id)
         if inviter_user is None:
             return
+        inviter_user_id = inviter_user.to_string()
         content = {MEMBERSHIP_CONTENT_KEY: MEMBERSHIP_INVITE}
-        await self._api.update_room_membership(
-            sender=inviter_user.to_string(),
+        event = await self._api.update_room_membership(
+            sender=inviter_user_id,
             target=user_id,
             room_id=room_id,
             new_membership=MEMBERSHIP_INVITE,
             content=content,
+        )
+        logger.debug(
+            f"{inviter_user_id} invited {user_id} to {room_id}: {event.get_dict()}"
         )
 
     async def _get_inviter_user(self, room_id: str) -> Optional[UserID]:

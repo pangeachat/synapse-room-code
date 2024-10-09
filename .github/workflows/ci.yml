@@ -40,5 +40,14 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python_version }}
+      - name: Install PostgreSQL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql postgresql-contrib
+      - name: Add PostgreSQL to PATH
+        run: |
+          sudo ln -s /usr/lib/postgresql/*/bin/* /usr/local/bin/
+      - name: Verify 'postgres' command
+        run: which postgres
       - run: python -m pip install tox
       - run: tox -e py

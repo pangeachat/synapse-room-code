@@ -23,6 +23,8 @@ dev = [
   "tox",
   "twisted",
   "aiounittest",
+  "psycopg2",
+  "testing.postgresql",
   # for type checking
   "mypy == 1.6.1",
   # for linting

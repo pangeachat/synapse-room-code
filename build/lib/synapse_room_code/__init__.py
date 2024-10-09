@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 import attr
 from synapse.events import EventBase
@@ -79,7 +79,7 @@ class SynapseRoomCode:
         room_id = event.room_id
 
         # Proceed only if the room has a join rule of "knock" and the access code is defined in its content
-        access_code: str | None = None
+        access_code: Union[str, None] = None
         join_rules_state_events = await self._api.get_room_state(
             room_id,
             event_filter=[(EVENT_TYPE_M_ROOM_JOIN_RULES, None)],
