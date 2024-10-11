@@ -2,6 +2,11 @@
 
 Extends room to optionally have a secret code. Upon knocking with a valid code, user is invited to the room.
 
+## Usage
+
+Send a `POST` request to `/_matrix/_pangea/v1/client/knock_with_code` with JSON body `{access_code: string}`.
+
+Access code must be 7 digit alphanumeric, with at least 1 digit in there.
 
 ## Installation
 

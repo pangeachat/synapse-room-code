@@ -232,7 +232,9 @@ class TestE2E(aiounittest.AsyncTestCase):
         return (user_id, access_token)
 
     async def knock_with_code(self, access_code: str, access_token: str):
-        knock_with_code_url = "http://localhost:8008/_synapse/client/knock_with_code"
+        knock_with_code_url = (
+            "http://localhost:8008/_matrix/_pangea/v1/client/knock_with_code"
+        )
         response = requests.post(
             knock_with_code_url,
             json={"access_code": access_code},
@@ -241,7 +243,9 @@ class TestE2E(aiounittest.AsyncTestCase):
         self.assertEqual(response.status_code, 200)
 
     async def knock_with_invalid_code(self, access_token: str):
-        knock_with_code_url = "http://localhost:8008/_synapse/client/knock_with_code"
+        knock_with_code_url = (
+            "http://localhost:8008/_matrix/_pangea/v1/client/knock_with_code"
+        )
         response = requests.post(
             knock_with_code_url,
             json={"access_code": "invalid"},

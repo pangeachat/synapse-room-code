@@ -72,7 +72,11 @@ class KnockWithCode(Resource):
                     send_cors=True,
                 )
                 return
-            if len(access_code) != 7 or not access_code.isalnum():
+            if (
+                len(access_code) != 7
+                or not access_code.isalnum()
+                or not any(char.isdigit() for char in access_code)  # At least one digit
+            ):
                 logger.error("Invalid 'access_code'")
                 respond_with_json(
                     request,

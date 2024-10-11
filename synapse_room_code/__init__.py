@@ -27,7 +27,7 @@ class SynapseRoomCode:
 
         # Register the HTTP endpoint
         api.register_web_resource(
-            path="/_synapse/client/knock_with_code",
+            path="/_matrix/_pangea/v1/client/knock_with_code",
             resource=self.resource,
         )
 
