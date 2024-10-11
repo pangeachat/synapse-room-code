@@ -118,7 +118,7 @@ class KnockWithCode(Resource):
             respond_with_json(
                 request,
                 200,
-                {"message": f"Invited {requester_id} to {', '.join(invited_rooms)}"},
+                {"message": f"Invited {requester_id}", "rooms": invited_rooms},
                 send_cors=True,
             )
         except Exception as e:

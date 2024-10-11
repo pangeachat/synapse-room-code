@@ -8,6 +8,8 @@ Send a `POST` request to `/_matrix/_pangea/v1/client/knock_with_code` with JSON 
 
 Access code must be 7 digit alphanumeric, with at least 1 digit in there.
 
+Response `200 OK` format: `{message: string, rooms: list[string]}`.
+
 ## Installation
 
 From the virtual environment that you use for Synapse, install this module with:
