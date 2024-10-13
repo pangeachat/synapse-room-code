@@ -7,6 +7,7 @@ from synapse.module_api import ModuleApi
 from synapse_room_code.knock_with_code import (
     KnockWithCode as KnockWithCodeResource,
 )
+from synapse_room_code.request_room_code import RequestRoomCode
 
 logger = logging.getLogger(f"synapse.module.{__name__}")
 
@@ -23,12 +24,19 @@ class SynapseRoomCode:
         self._config = config
 
         # Initiate resources
-        self.resource = KnockWithCodeResource(api)
+        self.knock_with_code_resource = KnockWithCodeResource(api)
+        self.request_code_resource = RequestRoomCode(api)
 
-        # Register the HTTP endpoint
+        # Register the HTTP endpoint for knock_with_code
         api.register_web_resource(
             path="/_matrix/_pangea/v1/client/knock_with_code",
-            resource=self.resource,
+            resource=self.knock_with_code_resource,
+        )
+
+        # Register the HTTP endpoint for generate_access_code
+        api.register_web_resource(
+            path="/_matrix/_pangea/v1/client/request_room_code",
+            resource=self.request_code_resource,
         )
 
     @staticmethod

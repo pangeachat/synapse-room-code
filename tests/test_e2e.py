@@ -242,6 +242,16 @@ class TestE2E(aiounittest.AsyncTestCase):
         )
         self.assertEqual(response.status_code, 200)
 
+    async def knock_without_access_token(self):
+        knock_with_code_url = (
+            "http://localhost:8008/_matrix/_pangea/v1/client/knock_with_code"
+        )
+        response = requests.post(
+            knock_with_code_url,
+            json={"access_code": "invalid"},
+        )
+        self.assertEqual(response.status_code, 403)
+
     async def knock_with_invalid_code(self, access_token: str):
         knock_with_code_url = (
             "http://localhost:8008/_matrix/_pangea/v1/client/knock_with_code"
@@ -335,12 +345,10 @@ class TestE2E(aiounittest.AsyncTestCase):
             cursor = conn.cursor()
             cursor.execute("SHOW LC_COLLATE;")
             collation = cursor.fetchone()[0]
-            print(f"Current collation: {collation}")
             assert collation == "C", f"Expected collation 'C', got '{collation}'"
 
             cursor.execute("SHOW LC_CTYPE;")
             ctype = cursor.fetchone()[0]
-            print(f"Current character classification: {ctype}")
             assert ctype == "C", f"Expected LC_CTYPE 'C', got '{ctype}'"
 
             cursor.close()
@@ -355,7 +363,7 @@ class TestE2E(aiounittest.AsyncTestCase):
                 postgresql.stop()
             raise e
 
-    async def test_e2e_sqlite(self) -> None:
+    async def test_e2e_knock_with_code_sqlite(self) -> None:
         synapse_dir = None
         server_process = None
         stdout_thread = None
@@ -402,6 +410,7 @@ class TestE2E(aiounittest.AsyncTestCase):
             )
 
             # Invoke knock with code endpoint
+            await self.knock_without_access_token()
             await self.knock_with_invalid_code(user_2_access_token)
             await self.knock_with_code(access_code, user_2_access_token)
 
@@ -437,7 +446,7 @@ class TestE2E(aiounittest.AsyncTestCase):
                 shutil.rmtree(synapse_dir)
             raise e
 
-    async def test_e2e_postgresql(self) -> None:
+    async def test_e2e_knock_with_code_postgresql(self) -> None:
         postgres = None
         server_process = None
         server_process = None
@@ -448,7 +457,6 @@ class TestE2E(aiounittest.AsyncTestCase):
             # Create a temporary directory for the Synapse server
             access_code = "vldcde1"
             postgres, postgres_url = await self.start_test_postgres()
-            print(postgres_url)
             (
                 synapse_dir,
                 config_path,
@@ -503,6 +511,137 @@ class TestE2E(aiounittest.AsyncTestCase):
                 self.fail("User 2 was not invited to the room")
             else:
                 print("User 2 was invited to the room")
+
+            # Clean up
+            if postgres is not None:
+                postgres.stop()
+            if server_process is not None:
+                server_process.terminate()
+                server_process.wait()
+            if stdout_thread is not None:
+                stdout_thread.join()
+            if stderr_thread is not None:
+                stderr_thread.join()
+            if synapse_dir is not None:
+                shutil.rmtree(synapse_dir)
+        except Exception as e:
+            if postgres is not None:
+                postgres.stop()
+            if server_process is not None:
+                server_process.terminate()
+                server_process.wait()
+            if stdout_thread is not None:
+                stdout_thread.join()
+            if stderr_thread is not None:
+                stderr_thread.join()
+            if synapse_dir is not None:
+                shutil.rmtree(synapse_dir)
+            raise e
+
+    async def get_access_token_without_access_code(self):
+        get_access_token_url = (
+            "http://localhost:8008/_matrix/_pangea/v1/client/request_room_code"
+        )
+        response = requests.get(url=get_access_token_url)
+        self.assertEqual(response.status_code, 403)
+
+    async def get_access_token(self, access_token: str):
+        get_access_token_url = (
+            "http://localhost:8008/_matrix/_pangea/v1/client/request_room_code"
+        )
+        response = requests.get(
+            url=get_access_token_url,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        self.assertEqual(response.status_code, 200)
+        access_code = response.json()["access_code"]
+        self.assertIsInstance(access_code, str)
+
+    async def test_e2e_get_access_code_sqlite(self) -> None:
+        synapse_dir = None
+        server_process = None
+        stdout_thread = None
+        stderr_thread = None
+        try:
+            (
+                synapse_dir,
+                config_path,
+                server_process,
+                stdout_thread,
+                stderr_thread,
+            ) = await self.start_test_synapse()
+
+            # Register and login
+            await self.register_user(
+                config_path=config_path,
+                dir=synapse_dir,
+                user="test1",
+                password="123123123",
+                admin=True,
+            )
+            user_1_id, user_access_token = await self.login_user(
+                user="test1", password="123123123"
+            )
+
+            # Get access code
+            await self.get_access_token_without_access_code()
+            await self.get_access_token(user_access_token)
+
+            # Clean up
+            if server_process is not None:
+                server_process.terminate()
+                server_process.wait()
+            if stdout_thread is not None:
+                stdout_thread.join()
+            if stderr_thread is not None:
+                stderr_thread.join()
+            if synapse_dir is not None:
+                shutil.rmtree(synapse_dir)
+        except Exception as e:
+            if server_process is not None:
+                server_process.terminate()
+                server_process.wait()
+            if stdout_thread is not None:
+                stdout_thread.join()
+            if stderr_thread is not None:
+                stderr_thread.join()
+            if synapse_dir is not None:
+                shutil.rmtree(synapse_dir)
+            raise e
+
+    async def test_e2e_get_access_code_postgresql(self) -> None:
+        postgres = None
+        synapse_dir = None
+        server_process = None
+        stdout_thread = None
+        stderr_thread = None
+        try:
+            postgres, postgres_url = await self.start_test_postgres()
+            (
+                synapse_dir,
+                config_path,
+                server_process,
+                stdout_thread,
+                stderr_thread,
+            ) = await self.start_test_synapse(
+                db="postgresql", postgresql_url=postgres_url
+            )
+
+            # Register and login
+            await self.register_user(
+                config_path=config_path,
+                dir=synapse_dir,
+                user="test1",
+                password="123123123",
+                admin=True,
+            )
+            user_1_id, user_access_token = await self.login_user(
+                user="test1", password="123123123"
+            )
+
+            # Get access code
+            await self.get_access_token_without_access_code()
+            await self.get_access_token(user_access_token)
 
             # Clean up
             if postgres is not None:
