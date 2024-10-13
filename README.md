@@ -2,6 +2,8 @@
 
 Extends room to optionally have a secret code. Upon knocking with a valid code, user is invited to the room.
 
+[![Linting and Tests](https://github.com/pangeachat/synapse-room-code/actions/workflows/ci.yml/badge.svg)](https://github.com/pangeachat/synapse-room-code/actions/workflows/ci.yml)
+
 ## Usage
 
 Send a `POST` request to `/_matrix/_pangea/v1/client/knock_with_code` with JSON body `{access_code: string}`.
