@@ -343,13 +343,16 @@ class TestE2E(aiounittest.AsyncTestCase):
             postgres_url_testdb = psycopg2.extensions.make_dsn(**dsn_params)
 
             # Confirm the collation
-            conn = psycopg2.connect(postgres_url_testdb)
+            conn = psycopg2.connect(postgres_url)
             cursor = conn.cursor()
-            cursor.execute("SHOW LC_COLLATE;")
+            cursor.execute(
+                f"SELECT datcollate FROM pg_database WHERE datname = '{dbname}';"
+            )
             collation = cursor.fetchone()[0]
             assert collation == "C", f"Expected collation 'C', got '{collation}'"
-
-            cursor.execute("SHOW LC_CTYPE;")
+            cursor.execute(
+                f"SELECT datctype FROM pg_database WHERE datname = '{dbname}';"
+            )
             ctype = cursor.fetchone()[0]
             assert ctype == "C", f"Expected LC_CTYPE 'C', got '{ctype}'"
 

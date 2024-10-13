@@ -40,6 +40,13 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python_version }}
+      - name: Configure locale to 'C'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y locales
+          sudo locale-gen C
+          sudo update-locale LC_ALL=C LANG=C
+          export LANG=C
       - name: Install PostgreSQL
         run: |
           sudo apt-get update
