@@ -3,8 +3,8 @@ import logging
 from synapse.api.errors import (
     AuthError,
     InvalidClientCredentialsError,
-    MissingClientTokenError,
     InvalidClientTokenError,
+    MissingClientTokenError,
 )
 from synapse.http import server
 from synapse.http.server import respond_with_json
@@ -46,7 +46,7 @@ class RequestRoomCode(Resource):
 
                 # Get the rooms with the access code
                 room_ids = await get_rooms_with_access_code(
-                    access_code=access_code, room_store=self._datastores.main
+                    access_code=_access_code, room_store=self._datastores.main
                 )
                 if len(room_ids) == 0:
                     access_code = _access_code

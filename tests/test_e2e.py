@@ -1,13 +1,14 @@
 import asyncio
 import logging
 import os
+import random
 import shutil
 import subprocess
 import sys
 import tempfile
 import threading
 from typing import IO, Literal, Tuple, Union
-
+from uuid import uuid4
 import aiounittest
 import psycopg2
 import requests
@@ -321,12 +322,13 @@ class TestE2E(aiounittest.AsyncTestCase):
                 self.fail("Postgres did not start successfully")
 
             # Create a new database with LC_COLLATE and LC_CTYPE set to 'C'
+            dbname = f"testdb_{uuid4().hex}"
             conn = psycopg2.connect(postgres_url)
             conn.autocommit = True
             cursor = conn.cursor()
             cursor.execute(
-                """
-                CREATE DATABASE testdb
+                f"""
+                CREATE DATABASE {dbname}
                 WITH TEMPLATE template0
                 LC_COLLATE 'C'
                 LC_CTYPE 'C';
@@ -335,9 +337,9 @@ class TestE2E(aiounittest.AsyncTestCase):
             cursor.close()
             conn.close()
 
-            # Update the connection parameters to connect to 'testdb'
+            # Update the connection parameters to connect to 'test_[dbname]'
             dsn_params = parse_dsn(postgres_url)
-            dsn_params["dbname"] = "testdb"
+            dsn_params["dbname"] = dbname
             postgres_url_testdb = psycopg2.extensions.make_dsn(**dsn_params)
 
             # Confirm the collation

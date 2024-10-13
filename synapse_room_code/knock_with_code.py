@@ -4,8 +4,8 @@ from typing import List
 from synapse.api.errors import (
     AuthError,
     InvalidClientCredentialsError,
-    MissingClientTokenError,
     InvalidClientTokenError,
+    MissingClientTokenError,
 )
 from synapse.http import server
 from synapse.http.server import respond_with_json
