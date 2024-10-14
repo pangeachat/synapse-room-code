@@ -29,13 +29,13 @@ class SynapseRoomCode:
 
         # Register the HTTP endpoint for knock_with_code
         api.register_web_resource(
-            path="/_matrix/_pangea/v1/client/knock_with_code",
+            path="/_synapse/client/pangea/v1/knock_with_code",
             resource=self.knock_with_code_resource,
         )
 
         # Register the HTTP endpoint for generate_access_code
         api.register_web_resource(
-            path="/_matrix/_pangea/v1/client/request_room_code",
+            path="/_synapse/client/pangea/v1/request_room_code",
             resource=self.request_code_resource,
         )
 

@@ -234,7 +234,7 @@ class TestE2E(aiounittest.AsyncTestCase):
 
     async def knock_with_code(self, access_code: str, access_token: str):
         knock_with_code_url = (
-            "http://localhost:8008/_matrix/_pangea/v1/client/knock_with_code"
+            "http://localhost:8008/_synapse/client/pangea/v1/knock_with_code"
         )
         response = requests.post(
             knock_with_code_url,
@@ -245,7 +245,7 @@ class TestE2E(aiounittest.AsyncTestCase):
 
     async def knock_without_access_token(self):
         knock_with_code_url = (
-            "http://localhost:8008/_matrix/_pangea/v1/client/knock_with_code"
+            "http://localhost:8008/_synapse/client/pangea/v1/knock_with_code"
         )
         response = requests.post(
             knock_with_code_url,
@@ -255,7 +255,7 @@ class TestE2E(aiounittest.AsyncTestCase):
 
     async def knock_with_invalid_code(self, access_token: str):
         knock_with_code_url = (
-            "http://localhost:8008/_matrix/_pangea/v1/client/knock_with_code"
+            "http://localhost:8008/_synapse/client/pangea/v1/knock_with_code"
         )
         response = requests.post(
             knock_with_code_url,
@@ -545,14 +545,14 @@ class TestE2E(aiounittest.AsyncTestCase):
 
     async def get_access_token_without_access_code(self):
         get_access_token_url = (
-            "http://localhost:8008/_matrix/_pangea/v1/client/request_room_code"
+            "http://localhost:8008/_synapse/client/pangea/v1/request_room_code"
         )
         response = requests.get(url=get_access_token_url)
         self.assertEqual(response.status_code, 403)
 
     async def get_access_token(self, access_token: str):
         get_access_token_url = (
-            "http://localhost:8008/_matrix/_pangea/v1/client/request_room_code"
+            "http://localhost:8008/_synapse/client/pangea/v1/request_room_code"
         )
         response = requests.get(
             url=get_access_token_url,

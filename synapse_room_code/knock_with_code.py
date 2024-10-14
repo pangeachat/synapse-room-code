@@ -101,7 +101,7 @@ class KnockWithCode(Resource):
                 respond_with_json(
                     request,
                     400,
-                    {"error": "Invalid 'access_code'"},
+                    {"error": f"No rooms found with the access code: {access_code}"},
                     send_cors=True,
                 )
                 return
