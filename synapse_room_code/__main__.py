@@ -1,6 +1,6 @@
 def main():
     import argparse
-    from importlib.metadata import version, PackageNotFoundError
+    from importlib.metadata import PackageNotFoundError, version
 
     parser = argparse.ArgumentParser(description="A simple version checker.")
 

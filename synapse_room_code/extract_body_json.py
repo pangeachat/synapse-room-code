@@ -9,6 +9,8 @@ logger = logging.getLogger("synapse.module.synapse_room_code.extract_body_json")
 
 async def extract_body_json(request: SynapseRequest) -> Any:
     content_type = request.getHeader("Content-Type")
+    if content_type is None:
+        return None
     if not content_type.lower().strip().startswith("application/json"):
         return None
     try:

@@ -6,11 +6,9 @@ Extends room to optionally have a secret code. Upon knocking with a valid code, 
 
 ## Usage
 
-Send a `POST` request to `/_synapse/client/pangea/v1/knock_with_code` with JSON body `{access_code: string}`.
+Send a `POST` request to `/_synapse/client/pangea/v1/knock_with_code` with JSON body `{access_code: string}`. Access code must be 7 digit alphanumeric, with at least 1 digit in there. Response `200 OK` format: `{ message: string, rooms: list[string] }`.
 
-Access code must be 7 digit alphanumeric, with at least 1 digit in there.
-
-Response `200 OK` format: `{message: string, rooms: list[string]}`.
+Send a `GET` request to `/_synapse/client/pangea/v1/request_room_code` to obtain unique room code. Response format: `{ access_code: string }`
 
 ## Installation
 
