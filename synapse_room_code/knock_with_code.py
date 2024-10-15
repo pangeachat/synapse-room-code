@@ -19,6 +19,7 @@ from synapse_room_code.get_rooms_with_access_code import (
     get_rooms_with_access_code,
 )
 from synapse_room_code.invite_user_to_room import invite_user_to_room
+from synapse_room_code.user_is_room_member import user_is_room_member
 
 logger = logging.getLogger("synapse.module.synapse_room_code.knock_with_code")
 
@@ -109,8 +110,17 @@ class KnockWithCode(Resource):
             # Send knock with access code to the rooms as requester
             requester_id = requester.user.to_string()
             invited_rooms: List[str] = []
+            already_joined_rooms: List[str] = []
             for room_id in room_ids:
                 try:
+                    is_member = await user_is_room_member(
+                        api=self._api,
+                        user_id=requester_id,
+                        room_id=room_id,
+                    )
+                    if is_member:
+                        already_joined_rooms.append(room_id)
+                        continue
                     await invite_user_to_room(
                         api=self._api,
                         user_id=requester_id,
@@ -122,7 +132,11 @@ class KnockWithCode(Resource):
             respond_with_json(
                 request,
                 200,
-                {"message": f"Invited {requester_id}", "rooms": invited_rooms},
+                {
+                    "message": f"Invited {requester_id}",
+                    "rooms": invited_rooms,
+                    "already_joined": already_joined_rooms,
+                },
                 send_cors=True,
             )
         except (

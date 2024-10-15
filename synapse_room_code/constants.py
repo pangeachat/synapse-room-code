@@ -10,6 +10,7 @@ ACCESS_CODE_KNOCK_EVENT_CONTENT_KEY = "access_code"  # New knock event content k
 MEMBERSHIP_CONTENT_KEY = "membership"  # existing membership content key
 MEMBERSHIP_KNOCK = "knock"  # existing membership value
 MEMBERSHIP_INVITE = "invite"  # existing membership value
+MEMBERSHIP_JOIN = "join"  # existing membership value
 
 # https://spec.matrix.org/v1.11/client-server-api/#mroompower_levels
 EVENT_TYPE_M_ROOM_POWER_LEVELS = "m.room.power_levels"
