@@ -7,7 +7,7 @@ from synapse_room_code.constants import (
 )
 
 
-async def user_is_room_member(api: ModuleApi, user_id: str, room_id: str) -> None:
+async def user_is_room_member(api: ModuleApi, user_id: str, room_id: str) -> bool:
     room_member_state_events = await api.get_room_state(
         room_id=room_id,
         event_filter=[(EVENT_TYPE_M_ROOM_MEMBER, user_id)],
