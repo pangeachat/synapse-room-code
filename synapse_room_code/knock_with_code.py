@@ -19,6 +19,7 @@ from synapse_room_code.get_rooms_with_access_code import (
     get_rooms_with_access_code,
 )
 from synapse_room_code.invite_user_to_room import invite_user_to_room
+from synapse_room_code.is_rate_limited import is_rate_limited
 from synapse_room_code.user_is_room_member import user_is_room_member
 
 logger = logging.getLogger("synapse.module.synapse_room_code.knock_with_code")
@@ -40,6 +41,15 @@ class KnockWithCode(Resource):
     async def _async_render_POST(self, request: SynapseRequest):
         try:
             requester = await self._auth.get_user_by_req(request)
+            requester_id = requester.user.to_string()
+            if is_rate_limited(requester_id):
+                respond_with_json(
+                    request,
+                    429,
+                    {"error": "Rate limited"},
+                    send_cors=True,
+                )
+                return
             body = await extract_body_json(request)
             if not isinstance(body, dict):
                 respond_with_json(
@@ -108,7 +118,6 @@ class KnockWithCode(Resource):
                 return
 
             # Send knock with access code to the rooms as requester
-            requester_id = requester.user.to_string()
             invited_rooms: List[str] = []
             already_joined_rooms: List[str] = []
             for room_id in room_ids:
