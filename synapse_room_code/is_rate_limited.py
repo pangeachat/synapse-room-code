@@ -1,7 +1,7 @@
 import time
 from typing import Dict, List
 
-request_log: Dict[str, List[str]] = {}
+request_log: Dict[str, List[float]] = {}
 
 
 def is_rate_limited(user_id: str, window_s: int = 300, max_req: int = 5) -> bool:
