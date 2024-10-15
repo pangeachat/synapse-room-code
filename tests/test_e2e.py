@@ -23,6 +23,7 @@ from synapse_room_code.constants import (
     MEMBERSHIP_CONTENT_KEY,
     MEMBERSHIP_INVITE,
 )
+from synapse_room_code.is_rate_limited import is_rate_limited
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -673,3 +674,13 @@ class TestE2E(aiounittest.AsyncTestCase):
             if synapse_dir is not None:
                 shutil.rmtree(synapse_dir)
             raise e
+
+    async def test_rate_limit(self) -> None:
+        user_id = "foobar"
+        window_s = 5
+        max_req = 3
+        for _ in range(max_req):
+            self.assertFalse(is_rate_limited(user_id, window_s, max_req))
+        self.assertTrue(is_rate_limited(user_id, window_s, max_req))
+        await asyncio.sleep(window_s)
+        self.assertFalse(is_rate_limited(user_id, window_s, max_req))
