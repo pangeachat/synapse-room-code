@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from time import perf_counter
 from typing import IO, Literal, Tuple, Union
 from uuid import uuid4
 
@@ -552,6 +553,7 @@ class TestE2E(aiounittest.AsyncTestCase):
         self.assertEqual(response.status_code, 403)
 
     async def get_access_token(self, access_token: str):
+        t0 = perf_counter()
         get_access_token_url = (
             "http://localhost:8008/_synapse/client/pangea/v1/request_room_code"
         )
@@ -560,6 +562,8 @@ class TestE2E(aiounittest.AsyncTestCase):
             headers={"Authorization": f"Bearer {access_token}"},
         )
         self.assertEqual(response.status_code, 200)
+        t1 = perf_counter()
+        print(f"Time taken to get access code: {t1 - t0} seconds")
         access_code = response.json()["access_code"]
         self.assertIsInstance(access_code, str)
 
