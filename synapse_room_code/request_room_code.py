@@ -40,8 +40,8 @@ class RequestRoomCode(Resource):
 
             access_code = None
             tries = 0
-            max_tries = 100
-            while access_code is None or tries < max_tries:
+            max_tries = 10
+            while access_code is None and tries < max_tries:
                 _access_code = generate_access_code()
 
                 # Get the rooms with the access code
