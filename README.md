@@ -14,7 +14,7 @@ Send a `GET` request to `/_synapse/client/pangea/v1/request_room_code` to obtain
 
 From the virtual environment that you use for Synapse, install this module with:
 ```shell
-pip install synapse-room-code
+pip install https://github.com/pangeachat/synapse-room-code
 ```
 (If you run into issues, you may need to upgrade `pip` first, e.g. by running
 `pip install --upgrade pip`)
