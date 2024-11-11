@@ -216,6 +216,8 @@ class TestE2E(aiounittest.AsyncTestCase):
         ]
         if admin:
             register_user_cmd.append("--admin")
+        else:
+            register_user_cmd.append("--no-admin")
         subprocess.check_call(register_user_cmd, cwd=dir)
 
     async def login_user(self, user: str, password: str) -> Tuple[str, str]:
