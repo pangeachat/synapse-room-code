@@ -21,7 +21,7 @@ dev = [
   # for tests
   "matrix-synapse",
   "tox",
-  "twisted",
+  "twisted == 24.7.0",
   "aiounittest",
   "psycopg2",
   "testing.postgresql",
