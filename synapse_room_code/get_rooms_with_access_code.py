@@ -18,7 +18,7 @@ async def get_rooms_with_access_code(
     database_engine = room_store.db_pool.engine.module.__name__
 
     if "sqlite" in database_engine:
-        # SQLite: use json_extract
+        # SQLite: use json_extract and make comparison case-insensitive
         query = """
             SELECT e.room_id
             FROM events e
@@ -28,14 +28,14 @@ async def get_rooms_with_access_code(
                 e.type = 'm.room.join_rules'
                 AND se.room_id = e.room_id
                 AND se.type = 'm.room.join_rules'
-                AND json_extract(ej.json, '$.content.access_code') = ?
+                AND LOWER(json_extract(ej.json, '$.content.access_code')) = LOWER(?)
             GROUP BY se.room_id
             HAVING MAX(e.origin_server_ts)
             """
         params = (access_code,)  # Use a List with placeholders
 
     else:
-        # PostgreSQL: use jsonb_extract_path_text
+        # PostgreSQL: use jsonb_extract_path_text and make comparison case-insensitive
         query = """
             SELECT DISTINCT ON (e.room_id) e.room_id, e.event_id
             FROM events e
@@ -44,7 +44,7 @@ async def get_rooms_with_access_code(
             WHERE
                 e.type = 'm.room.join_rules'
                 AND se.type = 'm.room.join_rules'
-                AND (ej.json::jsonb)->'content'->>'access_code' = %s
+                AND LOWER((ej.json::jsonb)->'content'->>'access_code') = LOWER(%s)
             ORDER BY e.room_id, e.origin_server_ts DESC;
             """
         params = (access_code,)  # Use a tuple with placeholders
