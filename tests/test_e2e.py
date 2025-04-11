@@ -17,6 +17,7 @@ import testing.postgresql
 import yaml
 from psycopg2.extensions import parse_dsn
 
+from synapse_room_code import SynapseRoomCodeConfig
 from synapse_room_code.constants import (
     ACCESS_CODE_JOIN_RULE_CONTENT_KEY,
     JOIN_RULE_CONTENT_KEY,
@@ -683,10 +684,13 @@ class TestE2E(aiounittest.AsyncTestCase):
 
     async def test_rate_limit(self) -> None:
         user_id = "foobar"
-        window_s = 5
-        max_req = 3
-        for _ in range(max_req):
-            self.assertFalse(is_rate_limited(user_id, window_s, max_req))
-        self.assertTrue(is_rate_limited(user_id, window_s, max_req))
-        await asyncio.sleep(window_s)
-        self.assertFalse(is_rate_limited(user_id, window_s, max_req))
+        config = SynapseRoomCodeConfig(
+            knock_with_code_requests_per_burst=3,
+            knock_with_code_burst_duration_seconds=5,
+        )
+        for _ in range(config.knock_with_code_requests_per_burst):
+            self.assertFalse(is_rate_limited(user_id, config))
+            await asyncio.sleep(1)
+        self.assertTrue(is_rate_limited(user_id, config))
+        await asyncio.sleep(config.knock_with_code_burst_duration_seconds + 1)
+        self.assertFalse(is_rate_limited(user_id, config))

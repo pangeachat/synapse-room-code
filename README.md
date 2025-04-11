@@ -23,7 +23,9 @@ Then alter your homeserver configuration, adding to your `modules` configuration
 ```yaml
 modules:
   - module: synapse_room_code.SynapseRoomCode
-    config: {}
+    config:
+      knock_with_code_requests_per_burst: 10
+      knock_with_code_burst_duration_seconds: 60
 ```
 
 

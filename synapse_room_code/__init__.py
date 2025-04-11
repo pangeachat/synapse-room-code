@@ -14,7 +14,8 @@ logger = logging.getLogger(f"synapse.module.{__name__}")
 
 @attr.s(auto_attribs=True, frozen=True)
 class SynapseRoomCodeConfig:
-    pass
+    knock_with_code_requests_per_burst: int = 10
+    knock_with_code_burst_duration_seconds: int = 60
 
 
 class SynapseRoomCode:
@@ -24,8 +25,8 @@ class SynapseRoomCode:
         self._config = config
 
         # Initiate resources
-        self.knock_with_code_resource = KnockWithCodeResource(api)
-        self.request_code_resource = RequestRoomCode(api)
+        self.knock_with_code_resource = KnockWithCodeResource(api, config)
+        self.request_code_resource = RequestRoomCode(api, config)
 
         # Register the HTTP endpoint for knock_with_code
         api.register_web_resource(

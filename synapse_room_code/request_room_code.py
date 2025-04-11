@@ -1,3 +1,9 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from synapse_room_code import SynapseRoomCodeConfig
+
 import logging
 
 from synapse.api.errors import (
@@ -24,9 +30,10 @@ logger = logging.getLogger("synapse.module.synapse_room_code.request_room_code")
 class RequestRoomCode(Resource):
     isLeaf = True
 
-    def __init__(self, api: ModuleApi):
+    def __init__(self, api: ModuleApi, config: SynapseRoomCodeConfig):
         super().__init__()
         self._api = api
+        self._config = config
         self._auth = self._api._hs.get_auth()
         self._datastores = self._api._hs.get_datastores()
 

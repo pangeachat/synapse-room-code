@@ -1,4 +1,11 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from synapse_room_code import SynapseRoomCodeConfig
+
 import logging
+
 from typing import List
 
 from synapse.api.errors import (
@@ -28,9 +35,10 @@ logger = logging.getLogger("synapse.module.synapse_room_code.knock_with_code")
 class KnockWithCode(Resource):
     isLeaf = True
 
-    def __init__(self, api: ModuleApi):
+    def __init__(self, api: ModuleApi, config: SynapseRoomCodeConfig):
         super().__init__()
         self._api = api
+        self._config = config
         self._auth = self._api._hs.get_auth()
         self._datastores = self._api._hs.get_datastores()
 
@@ -42,7 +50,7 @@ class KnockWithCode(Resource):
         try:
             requester = await self._auth.get_user_by_req(request)
             requester_id = requester.user.to_string()
-            if is_rate_limited(requester_id):
+            if is_rate_limited(requester_id, self._config):
                 respond_with_json(
                     request,
                     429,

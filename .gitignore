@@ -10,3 +10,4 @@ __pycache__
 *.log*
 _trial_temp.lock
 build/
+.DS_Store
