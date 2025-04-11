@@ -47,7 +47,7 @@ or
 trial tests
 ```
 
-To run the linters and `mypy` type checker, use `./scripts-dev/lint.sh`.
+To run the linters and `mypy` type checker, use `./scripts-dev/lint.s./scripts-dev/lint.shh`.
 
 
 ## Releasing
