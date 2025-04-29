@@ -18,4 +18,4 @@ def generate_access_code() -> str:
     random.shuffle(alphanumeric_chars)
 
     # Convert the list to a string, make it uppercase, and return the result
-    return "".join(alphanumeric_chars).upper()
+    return "".join(alphanumeric_chars).lower()
