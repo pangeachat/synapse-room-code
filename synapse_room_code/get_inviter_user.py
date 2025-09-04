@@ -11,6 +11,7 @@ from synapse_room_code.constants import (
     USERS_DEFAULT_POWER_LEVEL_KEY,
     USERS_POWER_LEVEL_KEY,
 )
+from synapse_room_code.user_is_room_member import user_is_room_member
 
 
 async def get_inviter_user(api: ModuleApi, room_id: str) -> Optional[UserID]:
@@ -57,7 +58,7 @@ async def get_inviter_user(api: ModuleApi, room_id: str) -> Optional[UserID]:
     if not isinstance(users_power_level, dict):
         users_power_level = {}
 
-    # Find the user with the highest power level
+    # Find the user with the highest power level that is still a member of the room
     local_user_id_with_highest_power = None
     highest_local_power = users_default
     for user_id, power_level in users_power_level.items():
@@ -69,6 +70,11 @@ async def get_inviter_user(api: ModuleApi, room_id: str) -> Optional[UserID]:
 
         # ensure user_id is a string
         if not isinstance(user_id, str):
+            continue
+
+        # ensure user is a member of the room
+        is_member = await user_is_room_member(api=api, user_id=user_id, room_id=room_id)
+        if not is_member:
             continue
 
         if power_level > highest_local_power and api.is_mine(user_id):
