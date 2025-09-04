@@ -509,21 +509,38 @@ class TestE2E(aiounittest.AsyncTestCase):
                 shutil.rmtree(synapse_dir)
             raise e
 
-    async def test_e2e_knock_with_code_admin_left_sqlite(self) -> None:
+    async def _test_knock_with_code_admin_left_common(
+        self,
+        db: Literal["sqlite", "postgresql"] = "sqlite",
+        postgresql_url: Union[str, None] = None,
+    ) -> None:
+        """
+        Common test logic for testing knock with code when an admin with high power level has left the room.
+        Tests that the system can still invite users through other remaining room members with sufficient power.
+        """
+        postgres = None
         synapse_dir = None
         server_process = None
         stdout_thread = None
         stderr_thread = None
+
         try:
-            # Create a temporary directory for the Synapse server
             access_code = "vldcde1"
+
+            # Start database if needed
+            if db == "postgresql":
+                postgres, postgresql_url = await self.start_test_postgres()
+
+            # Start Synapse server
             (
                 synapse_dir,
                 config_path,
                 server_process,
                 stdout_thread,
                 stderr_thread,
-            ) = await self.start_test_synapse()
+            ) = await self.start_test_synapse(db=db, postgresql_url=postgresql_url)
+
+            # Register test users
             await self.register_user(
                 config_path=config_path,
                 dir=synapse_dir,
@@ -546,7 +563,7 @@ class TestE2E(aiounittest.AsyncTestCase):
                 admin=True,
             )
 
-            # Login to obtain access token of all users
+            # Login to obtain access tokens
             user_1_id, user_1_access_token = await self.login_user(
                 user="test1", password="123123123"
             )
@@ -557,6 +574,7 @@ class TestE2E(aiounittest.AsyncTestCase):
                 user="test3", password="123123123"
             )
 
+            # Create room and set up the scenario
             room_id = await self.create_private_room(user_1_access_token)
 
             # User 2 needs to be invited and then join the room first (required before they can leave)
@@ -578,13 +596,14 @@ class TestE2E(aiounittest.AsyncTestCase):
             # User 2 (with highest power level besides creator) leaves the room
             await self.leave_room(room_id=room_id, access_token=user_2_access_token)
 
+            # Set room to be knockable with access code
             await self.set_room_knockable_with_code(
                 room_id=room_id,
                 access_token=user_1_access_token,
                 access_code=access_code,
             )
 
-            # Invoke knock with code endpoint - should still work because user1 is still in the room
+            # Test the knock with code functionality - should still work because user1 is still in the room
             await self.knock_with_code(access_code, user_3_access_token)
 
             # Wait for the invite - should work because user1 is still available to invite
@@ -598,7 +617,10 @@ class TestE2E(aiounittest.AsyncTestCase):
             else:
                 print("User 3 was invited to the room successfully after admin left")
 
-            # Clean up
+        finally:
+            # Clean up resources
+            if postgres is not None:
+                postgres.stop()
             if server_process is not None:
                 server_process.terminate()
                 server_process.wait()
@@ -608,17 +630,12 @@ class TestE2E(aiounittest.AsyncTestCase):
                 stderr_thread.join()
             if synapse_dir is not None:
                 shutil.rmtree(synapse_dir)
-        except Exception as e:
-            if server_process is not None:
-                server_process.terminate()
-                server_process.wait()
-            if stdout_thread is not None:
-                stdout_thread.join()
-            if stderr_thread is not None:
-                stderr_thread.join()
-            if synapse_dir is not None:
-                shutil.rmtree(synapse_dir)
-            raise e
+
+    async def test_e2e_knock_with_code_admin_left_sqlite(self) -> None:
+        await self._test_knock_with_code_admin_left_common(db="sqlite")
+
+    async def test_e2e_knock_with_code_admin_left_postgresql(self) -> None:
+        await self._test_knock_with_code_admin_left_common(db="postgresql")
 
     async def test_e2e_knock_with_code_postgresql(self) -> None:
         postgres = None
@@ -685,125 +702,6 @@ class TestE2E(aiounittest.AsyncTestCase):
                 self.fail("User 2 was not invited to the room")
             else:
                 print("User 2 was invited to the room")
-
-            # Clean up
-            if postgres is not None:
-                postgres.stop()
-            if server_process is not None:
-                server_process.terminate()
-                server_process.wait()
-            if stdout_thread is not None:
-                stdout_thread.join()
-            if stderr_thread is not None:
-                stderr_thread.join()
-            if synapse_dir is not None:
-                shutil.rmtree(synapse_dir)
-        except Exception as e:
-            if postgres is not None:
-                postgres.stop()
-            if server_process is not None:
-                server_process.terminate()
-                server_process.wait()
-            if stdout_thread is not None:
-                stdout_thread.join()
-            if stderr_thread is not None:
-                stderr_thread.join()
-            if synapse_dir is not None:
-                shutil.rmtree(synapse_dir)
-            raise e
-
-    async def test_e2e_knock_with_code_admin_left_postgresql(self) -> None:
-        postgres = None
-        server_process = None
-        stdout_thread = None
-        stderr_thread = None
-        synapse_dir = None
-        try:
-            # Create a temporary directory for the Synapse server
-            access_code = "vldcde1"
-            postgres, postgres_url = await self.start_test_postgres()
-            (
-                synapse_dir,
-                config_path,
-                server_process,
-                stdout_thread,
-                stderr_thread,
-            ) = await self.start_test_synapse(
-                db="postgresql", postgresql_url=postgres_url
-            )
-            await self.register_user(
-                config_path=config_path,
-                dir=synapse_dir,
-                user="test1",
-                password="123123123",
-                admin=True,
-            )
-            await self.register_user(
-                config_path=config_path,
-                dir=synapse_dir,
-                user="test2",
-                password="123123123",
-                admin=True,
-            )
-            await self.register_user(
-                config_path=config_path,
-                dir=synapse_dir,
-                user="test3",
-                password="123123123",
-                admin=True,
-            )
-
-            # Login to obtain access token of all users
-            user_1_id, user_1_access_token = await self.login_user(
-                user="test1", password="123123123"
-            )
-            user_2_id, user_2_access_token = await self.login_user(
-                user="test2", password="123123123"
-            )
-            user_3_id, user_3_access_token = await self.login_user(
-                user="test3", password="123123123"
-            )
-
-            room_id = await self.create_private_room(user_1_access_token)
-
-            # User 2 needs to be invited and then join the room first (required before they can leave)
-            await self.invite_user_to_room(
-                room_id=room_id, user_id=user_2_id, access_token=user_1_access_token
-            )
-            await self.join_room(room_id=room_id, access_token=user_2_access_token)
-
-            # Set power levels: user1 = 100 (room creator), user2 = 100, user3 = 0
-            await self.set_room_power_levels(
-                room_id=room_id,
-                access_token=user_1_access_token,
-                user_power_levels={
-                    user_1_id: 100,
-                    user_2_id: 100,
-                },
-            )
-
-            # User 2 (with highest power level besides creator) leaves the room
-            await self.leave_room(room_id=room_id, access_token=user_2_access_token)
-
-            await self.set_room_knockable_with_code(
-                room_id=room_id,
-                access_token=user_1_access_token,
-                access_code=access_code,
-            )
-
-            # Invoke knock with code endpoint - should still work because user1 is still in the room
-            await self.knock_with_code(access_code, user_3_access_token)
-
-            # Wait for the invite - should work because user1 is still available to invite
-            received_invitation = await self.wait_for_room_invitation(
-                room_id=room_id,
-                user_id=user_3_id,
-                access_token=user_1_access_token,
-            )
-            if not received_invitation:
-                self.fail("User 3 was not invited to the room")
-            else:
-                print("User 3 was invited to the room successfully after admin left")
 
             # Clean up
             if postgres is not None:
