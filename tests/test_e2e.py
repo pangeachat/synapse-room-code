@@ -615,7 +615,7 @@ class TestE2E(aiounittest.AsyncTestCase):
             if not received_invitation:
                 self.fail("User 3 was not invited to the room")
             else:
-                print("User 3 was invited to the room successfully after admin left")
+                logger.info("User 3 was invited to the room successfully after admin left")
 
         finally:
             # Clean up resources
