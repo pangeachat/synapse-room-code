@@ -877,3 +877,179 @@ class TestE2E(aiounittest.AsyncTestCase):
         self.assertTrue(is_rate_limited(user_id, config))
         await asyncio.sleep(config.knock_with_code_burst_duration_seconds + 1)
         self.assertFalse(is_rate_limited(user_id, config))
+
+    async def get_room_power_levels(self, room_id: str, access_token: str) -> dict:
+        """Get the current power levels state for a room."""
+        headers = {"Authorization": f"Bearer {access_token}"}
+        power_levels_url = f"http://localhost:8008/_matrix/client/v3/rooms/{room_id}/state/m.room.power_levels"
+        response = requests.get(power_levels_url, headers=headers)
+        self.assertEqual(response.status_code, 200)
+        return response.json()
+
+    async def _test_knock_with_code_promotes_user_to_admin(
+        self,
+        db: Literal["sqlite", "postgresql"] = "sqlite",
+        postgresql_url: Union[str, None] = None,
+    ) -> None:
+        """
+        Test that when the admin (user A) leaves a room and rejoins with a code,
+        the remaining member (user B) who doesn't have sufficient power to invite
+        is promoted to admin so they can send the invite.
+
+        Scenario:
+        1. User A creates a room and invites User B
+        2. User A has admin power (100), User B has default power (0)
+        3. User A leaves the room
+        4. User A rejoins with access code
+        5. Expected: get_inviter_user should promote User B to have invite power,
+           then return User B as the inviter
+        """
+        postgres = None
+        synapse_dir = None
+        server_process = None
+        stdout_thread = None
+        stderr_thread = None
+
+        try:
+            access_code = "promo1t"  # 7 chars, alphanumeric with at least 1 digit
+
+            # Start database if needed
+            if db == "postgresql":
+                postgres, postgresql_url = await self.start_test_postgres()
+
+            # Start Synapse server
+            (
+                synapse_dir,
+                config_path,
+                server_process,
+                stdout_thread,
+                stderr_thread,
+            ) = await self.start_test_synapse(db=db, postgresql_url=postgresql_url)
+
+            # Register test users
+            await self.register_user(
+                config_path=config_path,
+                dir=synapse_dir,
+                user="userA",
+                password="123123123",
+                admin=True,
+            )
+            await self.register_user(
+                config_path=config_path,
+                dir=synapse_dir,
+                user="userB",
+                password="123123123",
+                admin=True,
+            )
+
+            # Login to obtain access tokens
+            user_a_id, user_a_access_token = await self.login_user(
+                user="userA", password="123123123"
+            )
+            user_b_id, user_b_access_token = await self.login_user(
+                user="userB", password="123123123"
+            )
+
+            # Step 1: User A creates a room
+            room_id = await self.create_private_room(user_a_access_token)
+
+            # Step 2: User A invites User B and User B joins
+            await self.invite_user_to_room(
+                room_id=room_id, user_id=user_b_id, access_token=user_a_access_token
+            )
+            await self.join_room(room_id=room_id, access_token=user_b_access_token)
+
+            # Set power levels explicitly: User A = 100 (admin), User B = 0 (no invite power)
+            # invite power required = 50 (default for private rooms)
+            await self.set_room_power_levels(
+                room_id=room_id,
+                access_token=user_a_access_token,
+                user_power_levels={
+                    user_a_id: 100,
+                    user_b_id: 0,
+                },
+            )
+
+            # Verify initial power levels: User A should be admin, User B should have low power
+            power_levels = await self.get_room_power_levels(
+                room_id=room_id, access_token=user_a_access_token
+            )
+            user_a_power = power_levels.get("users", {}).get(user_a_id, 0)
+            user_b_power = power_levels.get("users", {}).get(user_b_id, 0)
+            invite_power_required = power_levels.get("invite", 0)
+
+            # User A should have admin power (100)
+            self.assertGreaterEqual(user_a_power, invite_power_required)
+            # User B should NOT have invite power initially (0 < 50)
+            self.assertLess(user_b_power, invite_power_required)
+            logger.info(
+                f"Initial power levels - User A: {user_a_power}, User B: {user_b_power}, "
+                f"Invite required: {invite_power_required}"
+            )
+
+            # Set room to be knockable with access code (before User A leaves)
+            await self.set_room_knockable_with_code(
+                room_id=room_id,
+                access_token=user_a_access_token,
+                access_code=access_code,
+            )
+
+            # Step 3: User A leaves the room
+            await self.leave_room(room_id=room_id, access_token=user_a_access_token)
+
+            # Step 4: User A rejoins using the access code
+            # This should trigger the new logic where User B is promoted to admin
+            await self.knock_with_code(access_code, user_a_access_token)
+
+            # Step 5: Wait for User A to receive an invitation
+            received_invitation = await self.wait_for_room_invitation(
+                room_id=room_id,
+                user_id=user_a_id,
+                access_token=user_b_access_token,
+            )
+
+            if not received_invitation:
+                self.fail(
+                    "User A was not invited to the room. "
+                    "Expected User B to be promoted to admin and send the invite."
+                )
+            else:
+                logger.info("User A was successfully invited back to the room!")
+
+            # Verify that User B now has sufficient power to invite (was promoted)
+            power_levels_after = await self.get_room_power_levels(
+                room_id=room_id, access_token=user_b_access_token
+            )
+            user_b_power_after = power_levels_after.get("users", {}).get(user_b_id, 0)
+            invite_power_required_after = power_levels_after.get("invite", 0)
+
+            self.assertGreaterEqual(
+                user_b_power_after,
+                invite_power_required_after,
+                f"User B should have been promoted to have invite power. "
+                f"User B power: {user_b_power_after}, Invite required: {invite_power_required_after}",
+            )
+            logger.info(
+                f"Final power levels - User B: {user_b_power_after}, "
+                f"Invite required: {invite_power_required_after}"
+            )
+
+        finally:
+            # Clean up resources
+            if postgres is not None:
+                postgres.stop()
+            if server_process is not None:
+                server_process.terminate()
+                server_process.wait()
+            if stdout_thread is not None:
+                stdout_thread.join()
+            if stderr_thread is not None:
+                stderr_thread.join()
+            if synapse_dir is not None:
+                shutil.rmtree(synapse_dir)
+
+    async def test_e2e_knock_with_code_promotes_user_to_admin_sqlite(self) -> None:
+        await self._test_knock_with_code_promotes_user_to_admin(db="sqlite")
+
+    async def test_e2e_knock_with_code_promotes_user_to_admin_postgresql(self) -> None:
+        await self._test_knock_with_code_promotes_user_to_admin(db="postgresql")
