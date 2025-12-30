@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 
 from synapse.module_api import ModuleApi
-from synapse.types import UserID
+from synapse.types import UserID, create_requester
 
 from synapse_room_code.constants import (
     DEFAULT_INVITE_POWER_LEVEL,
@@ -73,7 +73,6 @@ async def promote_user_to_admin(
 
         # Create a requester for persistence (needed for _persist_events)
         # We use create_requester which is used by ModuleApi internally
-        from synapse.types import create_requester
 
         requester = create_requester(
             user_to_promote,
