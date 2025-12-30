@@ -56,7 +56,6 @@ async def promote_user_to_admin(
         # WARNING: This uses internal APIs and may break with Synapse updates
         hs = api._hs
         event_creation_handler = hs.get_event_creation_handler()
-        storage_controllers = hs.get_storage_controllers()
         store = hs.get_datastores().main
 
         # Build the event - get room version from the main store
@@ -72,7 +71,16 @@ async def promote_user_to_admin(
             },
         )
 
-        # Create the event without auth checks
+        # Create a requester for persistence (needed for _persist_events)
+        # We use create_requester which is used by ModuleApi internally
+        from synapse.types import create_requester
+
+        requester = create_requester(
+            user_to_promote,
+            authenticated_entity=api.server_name,
+        )
+
+        # Create the event without auth checks (requester=None bypasses auth)
         (
             event,
             unpersisted_context,
@@ -81,12 +89,17 @@ async def promote_user_to_admin(
             requester=None,  # No requester means no auth checks
         )
 
-        # Persist the event and its context
+        # Persist the event context
         context = await unpersisted_context.persist(event)
-        if storage_controllers.persistence is None:
-            logger.error(f"No persistence controller available for room {room_id}")
-            return False
-        await storage_controllers.persistence.persist_event(event, context)
+
+        # Use _persist_events directly which handles worker routing
+        # but does not check auth rules (unlike handle_new_client_event)
+        await event_creation_handler._persist_events(
+            requester=requester,
+            events_and_context=[(event, context)],
+            ratelimit=False,
+            extra_users=[],
+        )
 
         logger.info(
             f"Successfully promoted user {user_to_promote} to power level {invite_power} "
