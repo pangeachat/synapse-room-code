@@ -7,12 +7,14 @@ from synapse.types import UserID
 from synapse_room_code.constants import (
     DEFAULT_INVITE_POWER_LEVEL,
     DEFAULT_USERS_DEFAULT_POWER_LEVEL,
+    EVENT_TYPE_M_ROOM_MEMBER,
     EVENT_TYPE_M_ROOM_POWER_LEVELS,
     INVITE_POWER_LEVEL_KEY,
+    MEMBERSHIP_CONTENT_KEY,
+    MEMBERSHIP_JOIN,
     USERS_DEFAULT_POWER_LEVEL_KEY,
     USERS_POWER_LEVEL_KEY,
 )
-from synapse_room_code.user_is_room_member import user_is_room_member
 
 logger = logging.getLogger("synapse.module.synapse_room_code.get_inviter_user")
 
@@ -71,15 +73,19 @@ async def promote_user_to_admin(
         )
 
         # Create the event without auth checks
-        event, unpersisted_context = (
-            await event_creation_handler.create_new_client_event(
-                builder=builder,
-                requester=None,  # No requester means no auth checks
-            )
+        (
+            event,
+            unpersisted_context,
+        ) = await event_creation_handler.create_new_client_event(
+            builder=builder,
+            requester=None,  # No requester means no auth checks
         )
 
         # Persist the event and its context
         context = await unpersisted_context.persist(event)
+        if storage_controllers.persistence is None:
+            logger.error(f"No persistence controller available for room {room_id}")
+            return False
         await storage_controllers.persistence.persist_event(event, context)
 
         logger.info(
@@ -136,38 +142,54 @@ async def get_inviter_user(api: ModuleApi, room_id: str) -> Optional[UserID]:
     if not isinstance(users_power_level, dict):
         users_power_level = {}
 
-    # Find the user with the highest power level that is still a member of the room
-    local_user_id_with_highest_power = None
-    highest_local_power = None  # Use None to track if we found any user
-    for user_id, power_level in users_power_level.items():
-        # ensure power level is an integer
-        try:
-            power_level = int(power_level)
-        except ValueError:
-            continue
+    # Get all room members to consider users with default power level
+    member_state_events = await api.get_room_state(
+        room_id=room_id,
+        event_filter=[(EVENT_TYPE_M_ROOM_MEMBER, None)],
+    )
 
-        # ensure user_id is a string
+    # Build a set of local joined members
+    local_joined_members: set[str] = set()
+    for state_event in member_state_events.values():
+        if state_event.type != EVENT_TYPE_M_ROOM_MEMBER:
+            continue
+        membership = state_event.content.get(MEMBERSHIP_CONTENT_KEY)
+        if membership != MEMBERSHIP_JOIN:
+            continue
+        user_id = state_event.state_key
         if not isinstance(user_id, str):
             continue
-
-        # ensure user is a member of the room
-        is_member = await user_is_room_member(api=api, user_id=user_id, room_id=room_id)
-        if not is_member:
-            continue
-
         # Only consider local users
         if not api.is_mine(user_id):
             continue
+        local_joined_members.add(user_id)
+
+    if not local_joined_members:
+        logger.warning(f"No local joined members found in room {room_id}")
+        return None
+
+    # Find the local user with the highest power level
+    local_user_id_with_highest_power = None
+    highest_local_power = None
+
+    for user_id in local_joined_members:
+        # Get user's power level (from explicit setting or default)
+        if user_id in users_power_level:
+            try:
+                power_level = int(users_power_level[user_id])
+            except (ValueError, TypeError):
+                power_level = users_default
+        else:
+            # User has default power level
+            power_level = users_default
 
         # Track the highest power level among local members
         if highest_local_power is None or power_level > highest_local_power:
             highest_local_power = power_level
             local_user_id_with_highest_power = user_id
 
-    # If no user was found in the explicit power levels, the room might be orphaned
-    # In this case, we can't find an inviter
-    if local_user_id_with_highest_power is None:
-        logger.warning(f"No local user found in room {room_id} power levels")
+    if local_user_id_with_highest_power is None or highest_local_power is None:
+        logger.warning(f"No local user found in room {room_id}")
         return None
 
     logger.info(

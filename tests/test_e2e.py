@@ -515,8 +515,15 @@ class TestE2E(aiounittest.AsyncTestCase):
         postgresql_url: Union[str, None] = None,
     ) -> None:
         """
-        Common test logic for testing knock with code when an admin with high power level has left the room.
-        Tests that the system can still invite users through other remaining room members with sufficient power.
+        Common test logic for testing knock with code when ALL admins (users with power level >= invite power)
+        have left the room.
+
+        Scenario:
+        1. User1 (admin, power level 100) creates the room
+        2. User2 (non-admin, power level 0) is invited and joins the room
+        3. User1 (the only admin) leaves the room
+        4. User3 knocks with the correct access code
+        5. Expected: User2 should be promoted to have invite power, then invite User3
         """
         postgres = None
         synapse_dir = None
@@ -574,49 +581,60 @@ class TestE2E(aiounittest.AsyncTestCase):
                 user="test3", password="123123123"
             )
 
-            # Create room and set up the scenario
+            # Create room - User1 is the creator with power level 100
             room_id = await self.create_private_room(user_1_access_token)
 
-            # User 2 needs to be invited and then join the room first (required before they can leave)
+            # Invite User2 to the room (they will have default power level 0)
             await self.invite_user_to_room(
                 room_id=room_id, user_id=user_2_id, access_token=user_1_access_token
             )
             await self.join_room(room_id=room_id, access_token=user_2_access_token)
 
-            # Set power levels: user1 = 100 (room creator), user2 = 100, user3 = 0
+            # Set power levels explicitly:
+            # - user1 = 100 (admin, can invite since invite power is 50)
+            # - user2 = 0 (non-admin, cannot invite)
+            # This ensures user2 has power level 0 which is below invite power (50)
             await self.set_room_power_levels(
                 room_id=room_id,
                 access_token=user_1_access_token,
                 user_power_levels={
                     user_1_id: 100,
-                    user_2_id: 100,
+                    user_2_id: 0,
                 },
             )
 
-            # User 2 (with highest power level besides creator) leaves the room
-            await self.leave_room(room_id=room_id, access_token=user_2_access_token)
-
-            # Set room to be knockable with access code
+            # Set room to be knockable with access code BEFORE user1 leaves
+            # (only user1 has power to change room state)
             await self.set_room_knockable_with_code(
                 room_id=room_id,
                 access_token=user_1_access_token,
                 access_code=access_code,
             )
 
-            # Test the knock with code functionality - should still work because user1 is still in the room
+            # User1 (the only admin with invite power) leaves the room
+            # Now only User2 remains, with power level 0 (below invite power of 50)
+            await self.leave_room(room_id=room_id, access_token=user_1_access_token)
+
+            # User3 knocks with the correct access code
+            # Expected behavior: User2 (power level 0) should be promoted to power level 50
+            # to be able to invite User3
             await self.knock_with_code(access_code, user_3_access_token)
 
-            # Wait for the invite - should work because user1 is still available to invite
+            # Wait for the invite - should work because User2 gets promoted to invite User3
             received_invitation = await self.wait_for_room_invitation(
                 room_id=room_id,
                 user_id=user_3_id,
-                access_token=user_1_access_token,
+                access_token=user_2_access_token,
             )
             if not received_invitation:
-                self.fail("User 3 was not invited to the room")
+                self.fail(
+                    "User 3 was not invited to the room. "
+                    "Expected: User2 should be promoted and invite User3 after all admins left."
+                )
             else:
                 logger.info(
-                    "User 3 was invited to the room successfully after admin left"
+                    "User 3 was invited to the room successfully after all admins left - "
+                    "User2 was promoted to invite power level"
                 )
 
         finally:
@@ -638,6 +656,154 @@ class TestE2E(aiounittest.AsyncTestCase):
 
     async def test_e2e_knock_with_code_admin_left_postgresql(self) -> None:
         await self._test_knock_with_code_admin_left_common(db="postgresql")
+
+    async def _test_knock_with_code_admin_left_default_power_common(
+        self,
+        db: Literal["sqlite", "postgresql"] = "sqlite",
+        postgresql_url: Union[str, None] = None,
+    ) -> None:
+        """
+        Test knock with code when admin leaves and remaining user has DEFAULT power level
+        (not explicitly set in the users dict).
+
+        Scenario:
+        1. User1 (admin, power level 100) creates the room
+        2. User2 is invited and joins (has default power level, NOT explicitly set)
+        3. Power levels only set user1=100, user2 is NOT in the users dict
+        4. User1 leaves the room
+        5. User3 knocks with the correct access code
+        6. Expected: User2 (with default power level) should be found, promoted, and invite User3
+        """
+        postgres = None
+        synapse_dir = None
+        server_process = None
+        stdout_thread = None
+        stderr_thread = None
+
+        try:
+            access_code = "vldcde1"
+
+            # Start database if needed
+            if db == "postgresql":
+                postgres, postgresql_url = await self.start_test_postgres()
+
+            # Start Synapse server
+            (
+                synapse_dir,
+                config_path,
+                server_process,
+                stdout_thread,
+                stderr_thread,
+            ) = await self.start_test_synapse(db=db, postgresql_url=postgresql_url)
+
+            # Register test users
+            await self.register_user(
+                config_path=config_path,
+                dir=synapse_dir,
+                user="test1",
+                password="123123123",
+                admin=True,
+            )
+            await self.register_user(
+                config_path=config_path,
+                dir=synapse_dir,
+                user="test2",
+                password="123123123",
+                admin=True,
+            )
+            await self.register_user(
+                config_path=config_path,
+                dir=synapse_dir,
+                user="test3",
+                password="123123123",
+                admin=True,
+            )
+
+            # Login to obtain access tokens
+            user_1_id, user_1_access_token = await self.login_user(
+                user="test1", password="123123123"
+            )
+            user_2_id, user_2_access_token = await self.login_user(
+                user="test2", password="123123123"
+            )
+            user_3_id, user_3_access_token = await self.login_user(
+                user="test3", password="123123123"
+            )
+
+            # Create room - User1 is the creator with power level 100
+            room_id = await self.create_private_room(user_1_access_token)
+
+            # Invite User2 to the room (they will have default power level)
+            await self.invite_user_to_room(
+                room_id=room_id, user_id=user_2_id, access_token=user_1_access_token
+            )
+            await self.join_room(room_id=room_id, access_token=user_2_access_token)
+
+            # Set power levels with ONLY user1 explicitly set
+            # User2 is NOT in the users dict, so they have default power level (0)
+            await self.set_room_power_levels(
+                room_id=room_id,
+                access_token=user_1_access_token,
+                user_power_levels={
+                    user_1_id: 100,
+                    # user_2_id is NOT set - they have default power level
+                },
+            )
+
+            # Set room to be knockable with access code BEFORE user1 leaves
+            await self.set_room_knockable_with_code(
+                room_id=room_id,
+                access_token=user_1_access_token,
+                access_code=access_code,
+            )
+
+            # User1 (the only admin) leaves the room
+            # Now only User2 remains, with DEFAULT power level (not in users dict)
+            await self.leave_room(room_id=room_id, access_token=user_1_access_token)
+
+            # User3 knocks with the correct access code
+            # Expected: User2 (default power level) should be found, promoted, and invite User3
+            await self.knock_with_code(access_code, user_3_access_token)
+
+            # Wait for the invite
+            received_invitation = await self.wait_for_room_invitation(
+                room_id=room_id,
+                user_id=user_3_id,
+                access_token=user_2_access_token,
+            )
+            if not received_invitation:
+                self.fail(
+                    "User 3 was not invited to the room. "
+                    "Expected: User2 (with default power level) should be found, promoted, and invite User3."
+                )
+            else:
+                logger.info(
+                    "User 3 was invited successfully - User2 with default power level was found and promoted"
+                )
+
+        finally:
+            # Clean up resources
+            if postgres is not None:
+                postgres.stop()
+            if server_process is not None:
+                server_process.terminate()
+                server_process.wait()
+            if stdout_thread is not None:
+                stdout_thread.join()
+            if stderr_thread is not None:
+                stderr_thread.join()
+            if synapse_dir is not None:
+                shutil.rmtree(synapse_dir)
+
+    async def test_e2e_knock_with_code_admin_left_default_power_sqlite(self) -> None:
+        await self._test_knock_with_code_admin_left_default_power_common(db="sqlite")
+
+    async def test_e2e_knock_with_code_admin_left_default_power_postgresql(
+        self,
+    ) -> None:
+        await self._test_knock_with_code_admin_left_default_power_common(
+            db="postgresql"
+        )
 
     async def test_e2e_knock_with_code_postgresql(self) -> None:
         postgres = None
